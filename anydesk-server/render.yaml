@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: anydesk-signaling-server
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: anydesk-redis
+          property: connectionString
+      - key: CORS_ORIGIN
+        value: "https://your-vercel-viewer-url.vercel.app"
+    autoDeploy: false
+
+  - type: redis
+    name: anydesk-redis
+    ipAllowList: [] # internal only by default
+    plan: free

@@ -1,0 +1,11 @@
+/* ── Control bar auto-hide animation ───────────────── */
+.control-bar {
+  transform: translateY(-100%);
+  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+  opacity: 0;
+}
+
+.control-bar.visible {
+  transform: translateY(0);
+  opacity: 1;
+}
