@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import './App.css';
 import { useSocket } from './hooks/useSocket';
 import { useWebRTC } from './hooks/useWebRTC';
@@ -13,6 +13,7 @@ function App() {
 
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string>();
+  const isIntentionalDisconnect = useRef(false);
 
   /**
    * Called when the user submits a room code.
@@ -26,6 +27,7 @@ function App() {
         return;
       }
 
+      isIntentionalDisconnect.current = false;
       setStatus('requesting');
       setErrorMessage(undefined);
 
@@ -55,6 +57,7 @@ function App() {
         console.log('[App] Session ended:', data.reason);
         setStatus('disconnected');
         setErrorMessage(data.reason);
+        isIntentionalDisconnect.current = true; // ended cleanly by host
         disconnect();
         cleanup();
       };
@@ -75,6 +78,7 @@ function App() {
    * Disconnect from the remote session.
    */
   const handleDisconnect = useCallback(() => {
+    isIntentionalDisconnect.current = true;
     if (socket) {
       socket.emit('session-ended', {});
     }
@@ -82,6 +86,10 @@ function App() {
     setStatus('idle');
     setErrorMessage(undefined);
   }, [socket, disconnect]);
+
+  // ── Auto-Reconnect Logic Removed ──
+  // The MVP workflow dictates no auto-reconnect, and room codes are single-use.
+  // Viewers must re-enter a new room code to start a fresh session upon disconnect.
 
   // ── Determine current view ──
   const isInSession = connectionState === 'connected' && remoteStream;

@@ -83,15 +83,12 @@ export function useWebRTC(socket: Socket | null) {
       pc.ondatachannel = (event) => {
         console.log('[WebRTC] Data channel received:', event.channel.label);
         if (event.channel.label === 'control') {
-          dataChannelRef.current = event.channel;
+          const dc = event.channel;
+          dc.onopen = () => console.log('[WebRTC] Data channel open');
+          dc.onclose = () => console.log('[WebRTC] Data channel closed');
+          dataChannelRef.current = dc;
         }
       };
-
-      // ── Create a data channel from viewer side as well ──
-      const dc = pc.createDataChannel('control', { ordered: true });
-      dc.onopen = () => console.log('[WebRTC] Data channel open');
-      dc.onclose = () => console.log('[WebRTC] Data channel closed');
-      dataChannelRef.current = dc;
 
       // ── Listen for SDP offer from host ──
       socket.on('sdp-offer', async (data: { sdp: RTCSessionDescriptionInit; roomCode: string }) => {
@@ -134,6 +131,8 @@ export function useWebRTC(socket: Socket | null) {
     const dc = dataChannelRef.current;
     if (dc && dc.readyState === 'open') {
       dc.send(JSON.stringify(event));
+    } else {
+      console.warn('[WebRTC] Data channel not ready, readyState:', dc?.readyState);
     }
   }, []);
 

@@ -6,21 +6,38 @@ let peerConnection: RTCPeerConnection | null = null;
 let localStream: MediaStream | null = null;
 let dataChannel: RTCDataChannel | null = null;
 let currentViewerId: string | null = null;
+let currentRoomCode: string | null = null;
+
+function updateUI(code: string | null, status: string, isConnected: boolean) {
+  const codeEl = document.getElementById('roomCodeDisplay');
+  const statusEl = document.getElementById('statusDisplay');
+  const btnNewCode = document.getElementById('btnNewCode');
+  const btnDisconnect = document.getElementById('btnDisconnect');
+
+  if (codeEl) codeEl.innerText = code || '------';
+  if (statusEl) statusEl.innerText = status;
+  
+  if (btnNewCode && btnDisconnect) {
+    if (isConnected) {
+      btnNewCode.classList.add('hidden');
+      btnDisconnect.classList.remove('hidden');
+    } else {
+      btnNewCode.classList.remove('hidden');
+      btnDisconnect.classList.add('hidden');
+    }
+  }
+}
 
 // Configuration for WebRTC
 const rtcConfig: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    ...(process.env.TURN_URL
-      ? [
-          {
-            urls: process.env.TURN_URL,
-            username: process.env.TURN_USERNAME,
-            credential: process.env.TURN_PASSWORD,
-          },
-        ]
-      : []),
+    {
+      urls: process.env.TURN_URL || 'turn:openrelay.metered.ca:80',
+      username: process.env.TURN_USERNAME || 'openrelayproject',
+      credential: process.env.TURN_PASSWORD || 'openrelayproject',
+    }
   ]
 };
 
@@ -33,10 +50,10 @@ socket.on('connect', () => {
 });
 
 socket.on('room-created', (data: { code: string }) => {
+  currentRoomCode = data.code;
   ipcRenderer.send('room-code-updated', data.code);
+  updateUI(data.code, 'Waiting for connection...', false);
 });
-
-let currentRoomCode: string | null = null;
 
 socket.on('connection-request', async (data: { viewerId: string; roomCode: string }) => {
   // Ask main process to show prompt
@@ -95,9 +112,11 @@ async function startWebRTC() {
   };
 
   // Setup data channel for receiving control events
-  peerConnection.ondatachannel = (event) => {
-    dataChannel = event.channel;
-    dataChannel.onmessage = (msg) => {
+  const setupDataChannel = (channel: RTCDataChannel) => {
+    channel.onopen = () => {
+      updateUI(currentRoomCode, 'Connected to Viewer!', true);
+    };
+    channel.onmessage = (msg) => {
       try {
         const payload = JSON.parse(msg.data);
         ipcRenderer.send('control-event', payload);
@@ -107,28 +126,52 @@ async function startWebRTC() {
     };
   };
 
-  // Create DataChannel (just in case viewer waits for it, though viewer also creates it)
-  // Usually the peer that creates the offer creates the data channel.
+  peerConnection.ondatachannel = (event) => {
+    dataChannel = event.channel;
+    setupDataChannel(dataChannel);
+  };
+
+  // Create DataChannel since host creates the offer
   dataChannel = peerConnection.createDataChannel('control');
+  setupDataChannel(dataChannel);
 
   try {
-    // Get screen stream
-    const sourceId = await ipcRenderer.invoke('get-screen-source-id');
-    if (!sourceId) throw new Error('No screen source found');
+    // Reuse stream if already active to prevent black screen bug on reconnect
+    if (!localStream) {
+      const sourceId = await ipcRenderer.invoke('get-screen-source-id');
+      if (!sourceId) throw new Error('No screen source found');
 
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        mandatory: {
-          chromeMediaSource: 'desktop',
-          chromeMediaSourceId: sourceId
-        }
-      } as any
-    });
+      localStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: sourceId,
+            maxWidth: 1280,
+            maxHeight: 720,
+            maxFrameRate: 30
+          }
+        } as any
+      });
+    }
 
     localStream.getTracks().forEach(track => {
+      if (track.kind === 'video') {
+        track.contentHint = 'motion';
+      }
       peerConnection?.addTrack(track, localStream!);
     });
+
+    // Optimize video sender for latency
+    const senders = peerConnection.getSenders();
+    const videoSender = senders.find(s => s.track?.kind === 'video');
+    if (videoSender) {
+      const parameters = videoSender.getParameters();
+      if (!parameters.degradationPreference) {
+        parameters.degradationPreference = 'maintain-framerate';
+      }
+      videoSender.setParameters(parameters);
+    }
 
     // Create offer
     const offer = await peerConnection.createOffer();
@@ -151,10 +194,25 @@ function cleanupSession() {
     peerConnection.close();
     peerConnection = null;
   }
-  if (localStream) {
-    localStream.getTracks().forEach(track => track.stop());
-    localStream = null;
-  }
+  // We explicitly DO NOT stop the localStream here. 
+  // Re-requesting desktop capture in Electron without a full reload 
+  // can cause it to silently fail and emit black frames.
+  
   currentViewerId = null;
+  ipcRenderer.send('release-all-inputs');
   ipcRenderer.send('room-code-updated', null);
+  updateUI(null, 'Initializing...', false);
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btnNewCode')?.addEventListener('click', () => {
+    cleanupSession();
+    socket?.emit('create-room');
+  });
+
+  document.getElementById('btnDisconnect')?.addEventListener('click', () => {
+    cleanupSession();
+    socket?.emit('session-ended');
+    socket?.emit('create-room');
+  });
+});

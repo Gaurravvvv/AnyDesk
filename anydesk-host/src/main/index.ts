@@ -9,6 +9,9 @@ let tray: Tray | null = null;
 
 const inputService = new InputService();
 
+// Disable WebRTC mDNS to allow local network testing without TURN
+app.commandLine.appendSwitch('disable-webrtc-hide-local-ips-with-mdns');
+
 app.whenReady().then(() => {
   // Create system tray
   tray = setupTray(app, {
@@ -30,48 +33,79 @@ app.on('window-all-closed', function () {
 function createHiddenWindow() {
   hiddenWindow = new BrowserWindow({
     width: 400,
-    height: 400,
-    show: false, // Hidden window for WebRTC & Signaling
+    height: 350,
+    show: true, // Window is now visible and in taskbar
+    title: 'AnyDesk Host',
+    resizable: false,
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false
+      contextIsolation: false,
+      backgroundThrottling: false
     }
   });
 
   hiddenWindow.loadFile(path.join(__dirname, '../renderer/hidden.html'));
 }
 
+let activeSourceId: string | null = null;
+let currentRoomCode: string | null = null;
+
+async function updateTrayMenu(code: string | null) {
+  if (!tray) return;
+  const sources = await desktopCapturer.getSources({ types: ['screen'] });
+  if (!activeSourceId && sources.length > 0) {
+    activeSourceId = sources[0].id;
+  }
+
+  const screenItems: Electron.MenuItemConstructorOptions[] = sources.map(source => ({
+    label: source.name,
+    type: 'radio',
+    checked: activeSourceId === source.id,
+    click: () => {
+      activeSourceId = source.id;
+    }
+  }));
+
+  const contextMenu = Menu.buildFromTemplate([
+    { label: 'AnyDesk Host', enabled: false },
+    { type: 'separator' },
+    { label: `Room Code: ${code || 'Not Connected'}`, enabled: false },
+    { type: 'separator' },
+    { label: 'Share Display', submenu: screenItems },
+    { type: 'separator' },
+    {
+      label: 'Generate New Code',
+      click: () => hiddenWindow?.webContents.send('request-new-code'),
+    },
+    {
+      label: 'Disconnect Viewer',
+      click: () => hiddenWindow?.webContents.send('disconnect-session'),
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => app.quit(),
+    },
+  ]);
+  tray.setContextMenu(contextMenu);
+}
+
 // IPC from hidden window to update tray code
 ipcMain.on('room-code-updated', (event, code) => {
-  if (tray) {
-    const contextMenu = Menu.buildFromTemplate([
-      { label: 'AnyDesk Host', enabled: false },
-      { type: 'separator' },
-      { label: `Room Code: ${code || 'Not Connected'}`, enabled: false },
-      { type: 'separator' },
-      {
-        label: 'Generate New Code',
-        click: () => hiddenWindow?.webContents.send('request-new-code'),
-      },
-      {
-        label: 'Disconnect Viewer',
-        click: () => hiddenWindow?.webContents.send('disconnect-session'),
-      },
-      { type: 'separator' },
-      {
-        label: 'Quit',
-        click: () => app.quit(),
-      },
-    ]);
-    tray.setContextMenu(contextMenu);
-  }
+  currentRoomCode = code;
+  updateTrayMenu(code);
 });
 
 // IPC for screen capture source
 ipcMain.handle('get-screen-source-id', async () => {
+  if (activeSourceId) return activeSourceId;
   const sources = await desktopCapturer.getSources({ types: ['screen'] });
-  // Just grab the first screen
-  return sources[0]?.id;
+  if (sources.length > 0) {
+    activeSourceId = sources[0].id;
+    return activeSourceId;
+  }
+  return null;
 });
 
 // IPC for showing allow/deny prompt
@@ -81,7 +115,12 @@ ipcMain.handle('show-connection-prompt', async (event, viewerId) => {
 
 // IPC for input events
 ipcMain.on('control-event', (event, payload) => {
+  console.log(`[Host IPC] Received control-event: ${payload.type}`);
   inputService.handleEvent(payload);
+});
+
+ipcMain.on('release-all-inputs', () => {
+  inputService.releaseAllInputs();
 });
 
 async function showPromptWindow(viewerId: string): Promise<boolean> {

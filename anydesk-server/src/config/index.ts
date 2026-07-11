@@ -10,9 +10,9 @@ export const config = {
   },
 
   cors: {
-    origins: (process.env.CORS_ORIGINS || 'http://localhost:5173')
-      .split(',')
-      .map((origin) => origin.trim()),
+    origins: process.env.CORS_ORIGINS 
+      ? process.env.CORS_ORIGINS.split(',').map(o => o.trim()) 
+      : '*',
   },
 
   room: {

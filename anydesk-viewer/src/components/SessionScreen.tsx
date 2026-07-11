@@ -19,6 +19,7 @@ export function SessionScreen({ remoteStream, onSendEvent, onDisconnect }: Sessi
   useEffect(() => {
     if (videoRef.current && remoteStream) {
       videoRef.current.srcObject = remoteStream;
+      videoRef.current.play().catch(e => console.warn('[Video] Play prevented:', e));
     }
   }, [remoteStream]);
 
@@ -68,7 +69,7 @@ export function SessionScreen({ remoteStream, onSendEvent, onDisconnect }: Sessi
       {/* Remote video */}
       <div
         ref={containerRef}
-        className="h-full w-full flex items-center justify-center cursor-default outline-none"
+        className="h-full w-full relative cursor-default outline-none bg-black"
         tabIndex={0}
       >
         <video
@@ -76,7 +77,7 @@ export function SessionScreen({ remoteStream, onSendEvent, onDisconnect }: Sessi
           autoPlay
           playsInline
           muted
-          className="max-h-full max-w-full object-contain"
+          className="absolute inset-0 w-full h-full object-contain"
           style={{ pointerEvents: 'none' }}
         />
       </div>

@@ -5,6 +5,7 @@ import { Server } from 'socket.io';
 import { config } from './config';
 
 import { initializeSocketHandlers } from './socket';
+import { disconnectRedis } from './services/redisClient';
 
 async function main(): Promise<void> {
   // ── Express ──────────────────────────────────────────
@@ -42,7 +43,7 @@ async function main(): Promise<void> {
   server.listen(config.port, () => {
     console.log(`\n🚀 Signaling server running on http://localhost:${config.port}`);
     console.log(`   Environment: ${config.nodeEnv}`);
-    console.log(`   CORS origins: ${config.cors.origins.join(', ')}\n`);
+    console.log(`   CORS origins: ${Array.isArray(config.cors.origins) ? config.cors.origins.join(', ') : config.cors.origins}\n`);
   });
 
   // ── Graceful shutdown ────────────────────────────────
@@ -51,9 +52,7 @@ async function main(): Promise<void> {
 
     // Close all socket connections
     io.close();
-
-
-
+    await disconnectRedis();
     // Close HTTP server
     server.close(() => {
       console.log('Server closed.');

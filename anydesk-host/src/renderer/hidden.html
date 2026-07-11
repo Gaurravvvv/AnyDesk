@@ -2,9 +2,86 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Hidden WebRTC Process</title>
+    <title>AnyDesk Host</title>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #1e1e24;
+        color: #e4e4e7;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      .card {
+        background-color: #2a2a35;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        text-align: center;
+        width: 80%;
+        max-width: 300px;
+      }
+      h2 {
+        margin: 0 0 10px 0;
+        font-weight: 400;
+        font-size: 16px;
+        color: #a1a1aa;
+      }
+      .code {
+        font-family: monospace;
+        font-size: 42px;
+        font-weight: bold;
+        letter-spacing: 4px;
+        margin: 10px 0;
+        color: #ffffff;
+      }
+      .status {
+        font-size: 14px;
+        margin-top: 15px;
+        margin-bottom: 25px;
+        color: #3b82f6;
+      }
+      .btn {
+        background-color: #3b82f6;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        width: 100%;
+        transition: background-color 0.2s;
+        margin-top: 10px;
+      }
+      .btn:hover {
+        background-color: #2563eb;
+      }
+      .btn-danger {
+        background-color: #ef4444;
+      }
+      .btn-danger:hover {
+        background-color: #dc2626;
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
   </head>
   <body>
+    <div class="card">
+      <h2>Your Room Code</h2>
+      <div id="roomCodeDisplay" class="code">------</div>
+      <div id="statusDisplay" class="status">Initializing...</div>
+      
+      <button id="btnNewCode" class="btn">Generate New Code</button>
+      <button id="btnDisconnect" class="btn btn-danger hidden">Disconnect Viewer</button>
+    </div>
+    
     <script>
       require('./hidden.js');
     </script>

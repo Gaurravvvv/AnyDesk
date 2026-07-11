@@ -8,6 +8,8 @@ keyboard.config.autoDelayMs = 0;
 export class InputService {
   private screenWidth = 1920;
   private screenHeight = 1080;
+  private pressedKeys = new Set<Key>();
+  private pressedMouseButtons = new Set<Button>();
 
   constructor() {
     this.init();
@@ -31,11 +33,15 @@ export class InputService {
           break;
 
         case 'mousedown':
-          await mouse.pressButton(this.mapMouseButton(payload.button));
+          const btnDown = this.mapMouseButton(payload.button);
+          this.pressedMouseButtons.add(btnDown);
+          await mouse.pressButton(btnDown);
           break;
 
         case 'mouseup':
-          await mouse.releaseButton(this.mapMouseButton(payload.button));
+          const btnUp = this.mapMouseButton(payload.button);
+          this.pressedMouseButtons.delete(btnUp);
+          await mouse.releaseButton(btnUp);
           break;
 
         case 'wheel':
@@ -49,6 +55,7 @@ export class InputService {
         case 'keydown':
           const downKey = this.mapKey(payload.code);
           if (downKey !== null) {
+            this.pressedKeys.add(downKey);
             await keyboard.pressKey(downKey);
           }
           break;
@@ -56,6 +63,7 @@ export class InputService {
         case 'keyup':
           const upKey = this.mapKey(payload.code);
           if (upKey !== null) {
+            this.pressedKeys.delete(upKey);
             await keyboard.releaseKey(upKey);
           }
           break;
@@ -63,6 +71,19 @@ export class InputService {
     } catch (error) {
       console.error('Error handling input event:', error);
     }
+  }
+
+  async releaseAllInputs() {
+    for (const key of this.pressedKeys) {
+      try { await keyboard.releaseKey(key); } catch (e) {}
+    }
+    this.pressedKeys.clear();
+
+    for (const btn of this.pressedMouseButtons) {
+      try { await mouse.releaseButton(btn); } catch (e) {}
+    }
+    this.pressedMouseButtons.clear();
+    console.log('Released all stuck inputs during cleanup.');
   }
 
   private mapMouseButton(button: 'left' | 'right' | 'middle'): Button {
@@ -75,7 +96,7 @@ export class InputService {
   }
 
   private mapKey(code: string): Key | null {
-    // Basic mapping for MVP. In a production app, this would be comprehensive.
+    // Comprehensive key mapping
     const keyMap: Record<string, Key> = {
       'Backspace': Key.Backspace,
       'Tab': Key.Tab,
@@ -86,12 +107,20 @@ export class InputService {
       'ControlRight': Key.RightControl,
       'AltLeft': Key.LeftAlt,
       'AltRight': Key.RightAlt,
+      'MetaLeft': Key.LeftSuper,
+      'MetaRight': Key.RightSuper,
       'Escape': Key.Escape,
       'Space': Key.Space,
       'ArrowLeft': Key.Left,
       'ArrowUp': Key.Up,
       'ArrowRight': Key.Right,
       'ArrowDown': Key.Down,
+      'PageUp': Key.PageUp,
+      'PageDown': Key.PageDown,
+      'Home': Key.Home,
+      'End': Key.End,
+      'Insert': Key.Insert,
+      'Delete': Key.Delete,
       // Alphabet
       'KeyA': Key.A, 'KeyB': Key.B, 'KeyC': Key.C, 'KeyD': Key.D, 'KeyE': Key.E,
       'KeyF': Key.F, 'KeyG': Key.G, 'KeyH': Key.H, 'KeyI': Key.I, 'KeyJ': Key.J,
@@ -102,7 +131,28 @@ export class InputService {
       'Digit0': Key.Num0, 'Digit1': Key.Num1, 'Digit2': Key.Num2, 'Digit3': Key.Num3,
       'Digit4': Key.Num4, 'Digit5': Key.Num5, 'Digit6': Key.Num6, 'Digit7': Key.Num7,
       'Digit8': Key.Num8, 'Digit9': Key.Num9,
+      // Function keys
+      'F1': Key.F1, 'F2': Key.F2, 'F3': Key.F3, 'F4': Key.F4, 'F5': Key.F5, 'F6': Key.F6,
+      'F7': Key.F7, 'F8': Key.F8, 'F9': Key.F9, 'F10': Key.F10, 'F11': Key.F11, 'F12': Key.F12,
+      // Symbols
+      'Minus': Key.Minus,
+      'Equal': Key.Equal,
+      'BracketLeft': Key.LeftBracket,
+      'BracketRight': Key.RightBracket,
+      'Backslash': Key.Backslash,
+      'Semicolon': Key.Semicolon,
+      'Quote': Key.Quote,
+      'Comma': Key.Comma,
+      'Period': Key.Period,
+      'Slash': Key.Slash,
+      'Backquote': Key.Grave,
+      // Numpad
+      'Numpad0': Key.Num0, 'Numpad1': Key.Num1, 'Numpad2': Key.Num2, 'Numpad3': Key.Num3,
+      'Numpad4': Key.Num4, 'Numpad5': Key.Num5, 'Numpad6': Key.Num6, 'Numpad7': Key.Num7,
+      'Numpad8': Key.Num8, 'Numpad9': Key.Num9,
+      'NumpadAdd': Key.Add, 'NumpadSubtract': Key.Subtract, 'NumpadMultiply': Key.Multiply, 'NumpadDivide': Key.Divide,
+      'NumpadDecimal': Key.Decimal
     };
-    return keyMap[code] || null;
+    return keyMap[code] ?? null;
   }
 }

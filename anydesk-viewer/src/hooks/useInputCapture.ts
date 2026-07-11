@@ -54,11 +54,28 @@ export function useInputCapture(
 
       // ── Keyboard ──
       const handleKeyDown = (e: KeyboardEvent) => {
+        // Allow standard browser shortcuts
+        if (
+          e.key === 'F5' || 
+          e.key === 'F12' || 
+          (e.ctrlKey && (e.key === 'w' || e.key === 'r')) ||
+          (e.ctrlKey && e.shiftKey && e.key === 'I')
+        ) {
+          return;
+        }
         e.preventDefault();
         onSendEvent(serializeKeyboard(e, 'keydown'));
       };
 
       const handleKeyUp = (e: KeyboardEvent) => {
+        if (
+          e.key === 'F5' || 
+          e.key === 'F12' || 
+          (e.ctrlKey && (e.key === 'w' || e.key === 'r')) ||
+          (e.ctrlKey && e.shiftKey && e.key === 'I')
+        ) {
+          return;
+        }
         e.preventDefault();
         onSendEvent(serializeKeyboard(e, 'keyup'));
       };
@@ -77,8 +94,8 @@ export function useInputCapture(
 
       // Keyboard events need the element to be focusable
       container.setAttribute('tabindex', '0');
-      container.addEventListener('keydown', handleKeyDown);
-      container.addEventListener('keyup', handleKeyUp);
+      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keyup', handleKeyUp);
 
       // Return cleanup function
       return () => {
@@ -87,8 +104,8 @@ export function useInputCapture(
         container.removeEventListener('mouseup', handleMouseUp);
         container.removeEventListener('wheel', handleWheel);
         container.removeEventListener('contextmenu', handleContextMenu);
-        container.removeEventListener('keydown', handleKeyDown);
-        container.removeEventListener('keyup', handleKeyUp);
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
       };
     },
     [onSendEvent]

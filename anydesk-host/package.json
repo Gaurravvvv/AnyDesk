@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "AnyDesk Host Agent",
   "main": "dist/main/index.js",
+  "author": "AnyDesk Clone Team",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anydesk-clone/anydesk"
+  },
   "scripts": {
     "dev": "tsc && npm run copy-html && electron .",
     "build": "tsc && npm run copy-html && electron-builder",
@@ -21,6 +26,10 @@
   "build": {
     "appId": "com.anydesk.host",
     "productName": "AnyDesk Host",
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
     "mac": {
       "category": "public.app-category.productivity"
     },
