@@ -6,6 +6,7 @@ import {
   invalidateRoom,
   getRoom,
 } from '../services/roomService';
+import { isRateLimited } from '../utils/rateLimiter';
 
 /**
  * Registers room-related Socket.io event handlers.
@@ -21,6 +22,13 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
    * Creates a room in Redis and returns the code.
    */
   socket.on('create-room', async (callback?: (response: any) => void) => {
+    if (isRateLimited(socket.id, { maxEvents: 5, windowMs: 60_000 })) {
+      console.warn(`[Room] Rate limited: ${socket.id}`);
+      if (typeof callback === 'function') {
+        callback({ success: false, error: 'Too many requests. Try again later.' });
+      }
+      return;
+    }
     try {
       const code = await createRoom(socket.id);
       // Store the room code on the socket for easy cleanup
@@ -46,6 +54,13 @@ export function registerRoomHandlers(io: Server, socket: Socket): void {
    * Validates the code, then notifies the host.
    */
   socket.on('join-room', async (data: { code: string }, callback?: (response: any) => void) => {
+    if (isRateLimited(socket.id, { maxEvents: 10, windowMs: 60_000 })) {
+      console.warn(`[Room] Rate limited join: ${socket.id}`);
+      if (typeof callback === 'function') {
+        callback({ success: false, error: 'Too many attempts. Try again later.' });
+      }
+      return;
+    }
     try {
       const code = data.code?.toUpperCase()?.trim();
 

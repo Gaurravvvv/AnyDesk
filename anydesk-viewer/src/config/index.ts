@@ -13,8 +13,8 @@ export const config = {
     }
   ] as RTCIceServer[],
 
-  // Control event throttle (ms) — caps mousemove at ~60fps
-  inputThrottleMs: 16,
+  // Control event throttle (ms) — caps mousemove at ~30fps
+  inputThrottleMs: 33,
 
   // Control bar auto-hide delay (ms)
   controlBarHideDelay: 3000,

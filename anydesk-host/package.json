@@ -25,6 +25,9 @@
   },
   "build": {
     "appId": "com.anydesk.host",
+    "extraMetadata": {
+      "signaling_url": "${env.SIGNALING_URL}"
+    },
     "productName": "AnyDesk Host",
     "files": [
       "dist/**/*",

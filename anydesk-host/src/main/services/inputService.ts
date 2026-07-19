@@ -3,7 +3,49 @@ import { mouse, keyboard, Point, Button, Key, screen } from '@nut-tree-fork/nut-
 // Setup nut.js config for lower delay
 mouse.config.mouseSpeed = 1000;
 mouse.config.autoDelayMs = 0;
+mouse.config.autoDelayMs = 0;
 keyboard.config.autoDelayMs = 0;
+
+interface ValidatedEvent {
+  type: 'mousemove' | 'mousedown' | 'mouseup' | 'wheel' | 'keydown' | 'keyup';
+  x?: number;
+  y?: number;
+  button?: 'left' | 'right' | 'middle';
+  deltaX?: number;
+  deltaY?: number;
+  key?: string;
+  code?: string;
+  modifiers?: { ctrl: boolean; shift: boolean; alt: boolean; meta: boolean };
+  timestamp?: number;
+}
+
+const VALID_TYPES = new Set(['mousemove', 'mousedown', 'mouseup', 'wheel', 'keydown', 'keyup']);
+const VALID_BUTTONS = new Set(['left', 'right', 'middle']);
+
+function validateEvent(payload: any): ValidatedEvent | null {
+  if (!payload || typeof payload !== 'object') return null;
+  if (!VALID_TYPES.has(payload.type)) return null;
+  
+  // Validate numeric ranges for mouse events
+  if (['mousemove', 'mousedown', 'mouseup', 'wheel'].includes(payload.type)) {
+    if (typeof payload.x !== 'number' || typeof payload.y !== 'number') return null;
+    if (payload.x < -0.1 || payload.x > 1.1 || payload.y < -0.1 || payload.y > 1.1) return null;
+  }
+  
+  // Validate button field
+  if (['mousedown', 'mouseup'].includes(payload.type)) {
+    if (!VALID_BUTTONS.has(payload.button)) return null;
+  }
+  
+  // Validate key code (prevent prototype pollution via __proto__, constructor, etc.)
+  if (['keydown', 'keyup'].includes(payload.type)) {
+    if (typeof payload.code !== 'string') return null;
+    if (payload.code.startsWith('__') || payload.code === 'constructor') return null;
+    if (payload.code.length > 30) return null; // no valid key code is this long
+  }
+  
+  return payload as ValidatedEvent;
+}
 
 export class InputService {
   private screenWidth = 1920;
@@ -24,36 +66,43 @@ export class InputService {
   }
 
   async handleEvent(payload: any) {
+    const validated = validateEvent(payload);
+    if (!validated) {
+      console.warn('[InputService] Rejected invalid event:', payload?.type);
+      return;
+    }
     try {
-      switch (payload.type) {
+      switch (validated.type) {
         case 'mousemove':
-          const x = Math.max(0, Math.min(this.screenWidth, payload.x * this.screenWidth));
-          const y = Math.max(0, Math.min(this.screenHeight, payload.y * this.screenHeight));
+          const x = Math.max(0, Math.min(this.screenWidth, validated.x! * this.screenWidth));
+          const y = Math.max(0, Math.min(this.screenHeight, validated.y! * this.screenHeight));
           await mouse.setPosition(new Point(x, y));
           break;
 
         case 'mousedown':
-          const btnDown = this.mapMouseButton(payload.button);
+          const btnDown = this.mapMouseButton(validated.button!);
           this.pressedMouseButtons.add(btnDown);
           await mouse.pressButton(btnDown);
           break;
 
         case 'mouseup':
-          const btnUp = this.mapMouseButton(payload.button);
+          const btnUp = this.mapMouseButton(validated.button!);
           this.pressedMouseButtons.delete(btnUp);
           await mouse.releaseButton(btnUp);
           break;
 
         case 'wheel':
-          if (payload.deltaY < 0) {
-            await mouse.scrollUp(Math.abs(payload.deltaY));
+          // Normalize: browser sends ~100 per "notch" for wheel, ~1-3 for trackpad
+          const scrollAmount = Math.max(1, Math.round(Math.abs(validated.deltaY!) / 100));
+          if (validated.deltaY! < 0) {
+            await mouse.scrollUp(scrollAmount);
           } else {
-            await mouse.scrollDown(payload.deltaY);
+            await mouse.scrollDown(scrollAmount);
           }
           break;
 
         case 'keydown':
-          const downKey = this.mapKey(payload.code);
+          const downKey = this.mapKey(validated.code!);
           if (downKey !== null) {
             this.pressedKeys.add(downKey);
             await keyboard.pressKey(downKey);
@@ -61,7 +110,7 @@ export class InputService {
           break;
 
         case 'keyup':
-          const upKey = this.mapKey(payload.code);
+          const upKey = this.mapKey(validated.code!);
           if (upKey !== null) {
             this.pressedKeys.delete(upKey);
             await keyboard.releaseKey(upKey);

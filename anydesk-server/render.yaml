@@ -14,7 +14,7 @@ services:
           type: redis
           name: anydesk-redis
           property: connectionString
-      - key: CORS_ORIGIN
+      - key: CORS_ORIGINS
         value: "https://your-vercel-viewer-url.vercel.app"
     autoDeploy: false
 

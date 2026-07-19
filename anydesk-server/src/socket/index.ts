@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { registerRoomHandlers } from './roomHandlers';
 import { registerSignalingHandlers } from './signalingHandlers';
 import { findRoomBySocketId, invalidateRoom } from '../services/roomService';
+import { clearRateLimit } from '../utils/rateLimiter';
 
 /**
  * Initializes all Socket.io event handlers for each new connection.
@@ -52,6 +53,7 @@ export function initializeSocketHandlers(io: Server): void {
      * Ensures the other peer is notified and the room is cleaned up.
      */
     socket.on('disconnect', async (reason: string) => {
+      clearRateLimit(socket.id);
       console.log(`[Socket] Client disconnected: ${socket.id} (${reason})`);
 
       try {

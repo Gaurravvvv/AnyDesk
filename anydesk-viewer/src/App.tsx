@@ -65,8 +65,12 @@ function App() {
       const cleanup = () => {
         socket.off('connection-approved', onApproved);
         socket.off('connection-denied', onDenied);
+        socket.off('session-ended', onSessionEnded);
       };
 
+      socket.off('connection-approved');
+      socket.off('connection-denied');
+      socket.off('session-ended');
       socket.on('connection-approved', onApproved);
       socket.on('connection-denied', onDenied);
       socket.on('session-ended', onSessionEnded);
@@ -110,6 +114,7 @@ function App() {
         <ConnectScreen
           status={displayStatus}
           onConnect={handleConnect}
+          onCancel={handleDisconnect}
           errorMessage={errorMessage}
         />
       )}

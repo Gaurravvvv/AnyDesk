@@ -10,6 +10,7 @@ export interface RoomData {
 }
 
 const ROOM_PREFIX = 'room:';
+const SOCKET_PREFIX = 'socket:';
 
 export async function createRoom(hostSocketId: string): Promise<string> {
   const redis = await getRedisClient();
@@ -28,6 +29,10 @@ export async function createRoom(hostSocketId: string): Promise<string> {
       };
       
       await redis.set(key, JSON.stringify(roomData), {
+        EX: config.room.codeTtlSeconds
+      });
+      // Reverse-index: socketId → roomCode
+      await redis.set(SOCKET_PREFIX + hostSocketId, code, {
         EX: config.room.codeTtlSeconds
       });
       console.log(`[Room] Created room ${code} for host ${hostSocketId}`);
@@ -62,10 +67,24 @@ export async function updateRoom(
   await redis.set(ROOM_PREFIX + code, JSON.stringify(newData), {
     KEEPTTL: true
   });
+  // If a viewer was just added, index their socketId too
+  if (updates.viewerSocketId) {
+    await redis.set(SOCKET_PREFIX + updates.viewerSocketId, code, {
+      EX: config.room.codeTtlSeconds
+    });
+  }
 }
 
 export async function invalidateRoom(code: string): Promise<void> {
   const redis = await getRedisClient();
+  // Clean up reverse-indexes before deleting the room
+  const room = await getRoom(code);
+  if (room) {
+    await redis.del(SOCKET_PREFIX + room.hostSocketId);
+    if (room.viewerSocketId) {
+      await redis.del(SOCKET_PREFIX + room.viewerSocketId);
+    }
+  }
   await redis.del(ROOM_PREFIX + code);
   console.log(`[Room] Invalidated room ${code}`);
 }
@@ -74,16 +93,12 @@ export async function findRoomBySocketId(
   socketId: string
 ): Promise<{ code: string; data: RoomData } | null> {
   const redis = await getRedisClient();
-  const keys = await redis.keys(ROOM_PREFIX + '*');
+  // O(1) lookup via reverse-index
+  const code = await redis.get(SOCKET_PREFIX + socketId);
+  if (!code) return null;
   
-  for (const key of keys) {
-    const dataStr = await redis.get(key);
-    if (dataStr) {
-      const data = JSON.parse(dataStr) as RoomData;
-      if (data.hostSocketId === socketId || data.viewerSocketId === socketId) {
-        return { code: key.replace(ROOM_PREFIX, ''), data };
-      }
-    }
-  }
-  return null;
+  const data = await getRoom(code);
+  if (!data) return null;
+  
+  return { code, data };
 }

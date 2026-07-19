@@ -1,4 +1,4 @@
-import { ipcRenderer } from 'electron';
+// ipcRenderer is no longer directly available — use window.hostAPI from preload
 import { io, Socket } from 'socket.io-client';
 
 let socket: Socket | null = null;
@@ -7,6 +7,9 @@ let localStream: MediaStream | null = null;
 let dataChannel: RTCDataChannel | null = null;
 let currentViewerId: string | null = null;
 let currentRoomCode: string | null = null;
+let statsInterval: NodeJS.Timeout | null = null;
+
+let pendingIceCandidates: RTCIceCandidateInit[] = [];
 
 function updateUI(code: string | null, status: string, isConnected: boolean) {
   const codeEl = document.getElementById('roomCodeDisplay');
@@ -42,7 +45,8 @@ const rtcConfig: RTCConfiguration = {
 };
 
 // Connect to signaling server
-socket = io('http://localhost:3001');
+const SIGNALING_URL = process.env.SIGNALING_URL || 'http://localhost:3001';
+socket = io(SIGNALING_URL);
 
 socket.on('connect', () => {
   console.log('Connected to signaling server');
@@ -51,13 +55,13 @@ socket.on('connect', () => {
 
 socket.on('room-created', (data: { code: string }) => {
   currentRoomCode = data.code;
-  ipcRenderer.send('room-code-updated', data.code);
+  window.hostAPI.sendRoomCodeUpdated(data.code);
   updateUI(data.code, 'Waiting for connection...', false);
 });
 
 socket.on('connection-request', async (data: { viewerId: string; roomCode: string }) => {
   // Ask main process to show prompt
-  const approved = await ipcRenderer.invoke('show-connection-prompt', data.viewerId);
+  const approved = await window.hostAPI.showConnectionPrompt(data.viewerId);
   socket?.emit('connection-response', { viewerId: data.viewerId, approved, roomCode: data.roomCode });
 
   if (approved) {
@@ -67,20 +71,23 @@ socket.on('connection-request', async (data: { viewerId: string; roomCode: strin
   }
 });
 
-socket.on('sdp-offer', async (data: { sdp: RTCSessionDescriptionInit }) => {
-  // If we receive an offer from viewer, answer it. But in our design, Host usually creates the offer.
-  // Wait, viewer web app might expect an offer. Let's send an offer to viewer.
-});
-
 socket.on('sdp-answer', async (data: { sdp: RTCSessionDescriptionInit }) => {
   if (peerConnection) {
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    // Flush buffered ICE candidates
+    for (const candidate of pendingIceCandidates) {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+    pendingIceCandidates = [];
   }
 });
 
 socket.on('ice-candidate', async (data: { candidate: RTCIceCandidateInit }) => {
-  if (peerConnection) {
+  if (!data.candidate) return;
+  if (peerConnection && peerConnection.remoteDescription) {
     await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+  } else {
+    pendingIceCandidates.push(data.candidate);
   }
 });
 
@@ -89,15 +96,16 @@ socket.on('session-ended', () => {
   socket?.emit('create-room'); // get new code
 });
 
-// IPC listeners from tray
-ipcRenderer.on('request-new-code', () => {
+// IPC listeners from tray (using hostAPI)
+const cleanupNewCode = window.hostAPI.onRequestNewCode(() => {
   cleanupSession();
   socket?.emit('create-room');
 });
 
-ipcRenderer.on('disconnect-session', () => {
+const cleanupDisconnect = window.hostAPI.onDisconnectSession(() => {
+  const roomCode = currentRoomCode;
   cleanupSession();
-  socket?.emit('session-ended');
+  socket?.emit('session-ended', { roomCode });
   socket?.emit('create-room');
 });
 
@@ -119,26 +127,31 @@ async function startWebRTC() {
     channel.onmessage = (msg) => {
       try {
         const payload = JSON.parse(msg.data);
-        ipcRenderer.send('control-event', payload);
+        window.hostAPI.sendControlEvent(payload);
       } catch (e) {
         console.error('Invalid control data', e);
       }
     };
   };
 
-  peerConnection.ondatachannel = (event) => {
-    dataChannel = event.channel;
-    setupDataChannel(dataChannel);
-  };
+  // Create two channels: unreliable for mouse, reliable for clicks/keys
+  const mouseChannel = peerConnection.createDataChannel('mouse', {
+    ordered: false,
+    maxRetransmits: 0,    // fire-and-forget, like UDP
+  });
+  const keysChannel = peerConnection.createDataChannel('keys', {
+    ordered: true,        // reliable for keystrokes and clicks
+  });
 
-  // Create DataChannel since host creates the offer
-  dataChannel = peerConnection.createDataChannel('control');
-  setupDataChannel(dataChannel);
+  // Use keysChannel as the "primary" for UI status
+  setupDataChannel(mouseChannel);
+  setupDataChannel(keysChannel);
+  dataChannel = keysChannel; // for cleanup reference
 
   try {
     // Reuse stream if already active to prevent black screen bug on reconnect
     if (!localStream) {
-      const sourceId = await ipcRenderer.invoke('get-screen-source-id');
+      const sourceId = await window.hostAPI.getScreenSourceId();
       if (!sourceId) throw new Error('No screen source found');
 
       localStream = await navigator.mediaDevices.getUserMedia({
@@ -147,9 +160,9 @@ async function startWebRTC() {
           mandatory: {
             chromeMediaSource: 'desktop',
             chromeMediaSourceId: sourceId,
-            maxWidth: 1280,
-            maxHeight: 720,
-            maxFrameRate: 30
+            maxWidth: 1920,
+            maxHeight: 1080,
+            maxFrameRate: 60
           }
         } as any
       });
@@ -157,7 +170,7 @@ async function startWebRTC() {
 
     localStream.getTracks().forEach(track => {
       if (track.kind === 'video') {
-        track.contentHint = 'motion';
+        track.contentHint = 'detail';
       }
       peerConnection?.addTrack(track, localStream!);
     });
@@ -166,11 +179,22 @@ async function startWebRTC() {
     const senders = peerConnection.getSenders();
     const videoSender = senders.find(s => s.track?.kind === 'video');
     if (videoSender) {
-      const parameters = videoSender.getParameters();
-      if (!parameters.degradationPreference) {
-        parameters.degradationPreference = 'maintain-framerate';
+      const params = videoSender.getParameters();
+      
+      // Initialize encodings if empty (required for some browsers)
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}];
       }
-      videoSender.setParameters(parameters);
+      
+      params.encodings[0] = {
+        ...params.encodings[0],
+        maxBitrate: 2_500_000,          // 2.5 Mbps cap — good for 1080p desktop
+        maxFramerate: 30,               // start at 30fps, save bandwidth
+        // Note: scaleResolutionDownBy is not set = native resolution
+      };
+      params.degradationPreference = 'maintain-resolution';
+      
+      await videoSender.setParameters(params);
     }
 
     // Create offer
@@ -179,6 +203,65 @@ async function startWebRTC() {
     
     // Send offer to viewer
     socket?.emit('sdp-offer', { sdp: offer, roomCode: currentRoomCode });
+
+    // ── Adaptive quality monitor ──
+    let lastBytesSent = 0;
+    let lastTimestamp = 0;
+    
+    statsInterval = setInterval(async () => {
+      if (!peerConnection) {
+        if (statsInterval) clearInterval(statsInterval);
+        return;
+      }
+      
+      try {
+        const stats = await peerConnection.getStats();
+        stats.forEach((report: any) => {
+          if (report.type === 'outbound-rtp' && report.kind === 'video') {
+            const now = report.timestamp;
+            const bytesSent = report.bytesSent || 0;
+            
+            // Calculate current bitrate
+            if (lastTimestamp > 0) {
+              const timeDelta = (now - lastTimestamp) / 1000;
+              const bitrate = ((bytesSent - lastBytesSent) * 8) / timeDelta;
+              const packetLoss = report.packetsLost || 0;
+              const totalPackets = report.packetsSent || 1;
+              const lossRate = packetLoss / totalPackets;
+              
+              console.log(`[Stats] Bitrate: ${(bitrate / 1_000_000).toFixed(2)} Mbps | Loss: ${(lossRate * 100).toFixed(1)}% | FPS: ${report.framesPerSecond || 'N/A'}`);
+              
+              // Adaptive quality: degrade if losing packets
+              const videoSender = peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+              if (videoSender) {
+                const params = videoSender.getParameters();
+                if (params.encodings && params.encodings[0]) {
+                  const currentMax = params.encodings[0].maxBitrate || 2_500_000;
+                  
+                  if (lossRate > 0.05 && currentMax > 500_000) {
+                    // High packet loss — reduce bitrate by 25%
+                    params.encodings[0].maxBitrate = Math.round(currentMax * 0.75);
+                    videoSender.setParameters(params);
+                    console.log(`[Stats] ⬇ Reduced bitrate to ${params.encodings[0].maxBitrate}`);
+                  } else if (lossRate < 0.01 && currentMax < 4_000_000) {
+                    // Low packet loss — increase bitrate by 10%
+                    params.encodings[0].maxBitrate = Math.round(currentMax * 1.10);
+                    videoSender.setParameters(params);
+                    console.log(`[Stats] ⬆ Increased bitrate to ${params.encodings[0].maxBitrate}`);
+                  }
+                }
+              }
+            }
+            
+            lastBytesSent = bytesSent;
+            lastTimestamp = now;
+          }
+        });
+      } catch (e) {
+        // Stats not available yet
+      }
+    }, 3000); // Check every 3 seconds
+
   } catch (err) {
     console.error('Failed to setup WebRTC', err);
     cleanupSession();
@@ -186,6 +269,11 @@ async function startWebRTC() {
 }
 
 function cleanupSession() {
+  if (statsInterval) {
+    clearInterval(statsInterval);
+    statsInterval = null;
+  }
+  pendingIceCandidates = [];
   if (dataChannel) {
     dataChannel.close();
     dataChannel = null;
@@ -199,8 +287,8 @@ function cleanupSession() {
   // can cause it to silently fail and emit black frames.
   
   currentViewerId = null;
-  ipcRenderer.send('release-all-inputs');
-  ipcRenderer.send('room-code-updated', null);
+  window.hostAPI.releaseAllInputs();
+  window.hostAPI.sendRoomCodeUpdated(null);
   updateUI(null, 'Initializing...', false);
 }
 
@@ -211,8 +299,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('btnDisconnect')?.addEventListener('click', () => {
+    const roomCode = currentRoomCode;
     cleanupSession();
-    socket?.emit('session-ended');
+    socket?.emit('session-ended', { roomCode });
     socket?.emit('create-room');
   });
 });

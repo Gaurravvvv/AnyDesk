@@ -39,8 +39,9 @@ function createHiddenWindow() {
     resizable: false,
     autoHideMenuBar: true,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '../preload/preload.js'),
       backgroundThrottling: false
     }
   });
@@ -115,7 +116,9 @@ ipcMain.handle('show-connection-prompt', async (event, viewerId) => {
 
 // IPC for input events
 ipcMain.on('control-event', (event, payload) => {
-  console.log(`[Host IPC] Received control-event: ${payload.type}`);
+  if (payload.type !== 'mousemove') {
+    console.log(`[Host IPC] Received control-event: ${payload.type}`);
+  }
   inputService.handleEvent(payload);
 });
 
@@ -131,8 +134,9 @@ async function showPromptWindow(viewerId: string): Promise<boolean> {
       frame: false,
       alwaysOnTop: true,
       webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, '../preload/preload.js')
       }
     });
 
@@ -146,9 +150,8 @@ async function showPromptWindow(viewerId: string): Promise<boolean> {
             <button id="deny" style="padding: 10px 20px; background: #ef4444; color: white; border: none; border-radius: 5px; cursor: pointer;">Deny</button>
           </div>
           <script>
-            const { ipcRenderer } = require('electron');
-            document.getElementById('allow').onclick = () => ipcRenderer.send('prompt-response', true);
-            document.getElementById('deny').onclick = () => ipcRenderer.send('prompt-response', false);
+            document.getElementById('allow').onclick = () => window.hostAPI?.sendPromptResponse?.(true);
+            document.getElementById('deny').onclick = () => window.hostAPI?.sendPromptResponse?.(false);
           </script>
         </body>
       </html>

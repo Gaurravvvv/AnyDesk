@@ -1,19 +1,17 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { Socket } from 'socket.io-client';
-import { connectSocket, disconnectSocket } from '../services/signalingService';
+import { getSocket, disconnectSocket } from '../services/signalingService';
 
 /**
  * Manages the Socket.io connection lifecycle.
- * Auto-connects on mount, disconnects on unmount.
+ * Initializes socket synchronously via getSocket(), connects on mount.
  */
 export function useSocket() {
-  const socketRef = useRef<Socket | null>(null);
+  // getSocket() is synchronous — creates the instance once, returns it thereafter
+  const [socket] = useState<Socket>(() => getSocket());
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    const socket = connectSocket();
-    socketRef.current = socket;
-
     const onConnect = () => {
       console.log('[Socket] Connected:', socket.id);
       setIsConnected(true);
@@ -27,8 +25,10 @@ export function useSocket() {
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
 
-    // If already connected (reconnect scenario)
-    if (socket.connected) {
+    // Connect if not already connected
+    if (!socket.connected) {
+      socket.connect();
+    } else {
       setIsConnected(true);
     }
 
@@ -37,9 +37,9 @@ export function useSocket() {
       socket.off('disconnect', onDisconnect);
       disconnectSocket();
     };
-  }, []);
+  }, [socket]);
 
-  const getSocket = useCallback(() => socketRef.current, []);
+  const getSocketRef = useCallback(() => socket, [socket]);
 
-  return { socket: socketRef.current, isConnected, getSocket };
+  return { socket, isConnected, getSocket: getSocketRef };
 }

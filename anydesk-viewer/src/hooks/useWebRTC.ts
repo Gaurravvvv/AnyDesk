@@ -16,6 +16,7 @@ import type { ControlEvent, ConnectionStatus } from '../types';
 export function useWebRTC(socket: Socket | null) {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
+  const mouseChannelRef = useRef<RTCDataChannel | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
 
   const [connectionState, setConnectionState] = useState<ConnectionStatus>('idle');
@@ -35,6 +36,8 @@ export function useWebRTC(socket: Socket | null) {
       // Create peer connection
       const pc = new RTCPeerConnection({ iceServers: config.iceServers });
       peerConnectionRef.current = pc;
+
+      const pendingCandidates: RTCIceCandidateInit[] = [];
 
       setConnectionState('connecting');
 
@@ -79,13 +82,16 @@ export function useWebRTC(socket: Socket | null) {
         console.log('[WebRTC] ICE state:', pc.iceConnectionState);
       };
 
-      // ── Handle incoming data channel (control channel from host) ──
+      // ── Handle incoming data channels from host ──
       pc.ondatachannel = (event) => {
         console.log('[WebRTC] Data channel received:', event.channel.label);
-        if (event.channel.label === 'control') {
-          const dc = event.channel;
-          dc.onopen = () => console.log('[WebRTC] Data channel open');
-          dc.onclose = () => console.log('[WebRTC] Data channel closed');
+        const dc = event.channel;
+        dc.onopen = () => console.log(`[WebRTC] Data channel '${dc.label}' open`);
+        dc.onclose = () => console.log(`[WebRTC] Data channel '${dc.label}' closed`);
+        
+        if (dc.label === 'mouse') {
+          mouseChannelRef.current = dc;
+        } else if (dc.label === 'keys') {
           dataChannelRef.current = dc;
         }
       };
@@ -95,6 +101,12 @@ export function useWebRTC(socket: Socket | null) {
         try {
           console.log('[WebRTC] Received SDP offer');
           await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+
+          // Flush any ICE candidates that arrived before the offer
+          for (const candidate of pendingCandidates) {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          }
+          pendingCandidates.length = 0;
 
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
@@ -113,9 +125,13 @@ export function useWebRTC(socket: Socket | null) {
       // ── Listen for ICE candidates from host ──
       socket.on('ice-candidate', async (data: { candidate: RTCIceCandidateInit }) => {
         try {
-          if (data.candidate && pc.remoteDescription) {
-            await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+          if (!data.candidate) return;
+          if (!pc.remoteDescription) {
+            // Buffer candidate — will be flushed after setRemoteDescription
+            pendingCandidates.push(data.candidate);
+            return;
           }
+          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
         } catch (err) {
           console.error('[WebRTC] Error adding ICE candidate:', err);
         }
@@ -128,7 +144,9 @@ export function useWebRTC(socket: Socket | null) {
    * Sends a control event to the host via the data channel.
    */
   const sendControlEvent = useCallback((event: ControlEvent) => {
-    const dc = dataChannelRef.current;
+    // Route mouse moves to the unreliable channel, everything else to reliable
+    const isMouseMove = event.type === 'mousemove';
+    const dc = isMouseMove ? mouseChannelRef.current : dataChannelRef.current;
     if (dc && dc.readyState === 'open') {
       dc.send(JSON.stringify(event));
     } else {
@@ -140,6 +158,10 @@ export function useWebRTC(socket: Socket | null) {
    * Tears down the peer connection and data channel.
    */
   const disconnect = useCallback(() => {
+    if (mouseChannelRef.current) {
+      mouseChannelRef.current.close();
+      mouseChannelRef.current = null;
+    }
     if (dataChannelRef.current) {
       dataChannelRef.current.close();
       dataChannelRef.current = null;
