@@ -13,6 +13,7 @@ interface ConnectScreenProps {
 export function ConnectScreen({ status, onConnect, onCancel, errorMessage }: ConnectScreenProps) {
   const [code, setCode] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,10 +136,27 @@ export function ConnectScreen({ status, onConnect, onCancel, errorMessage }: Con
       {/* Foreground Content */}
       <div className="relative z-10 h-full w-full flex flex-col justify-between items-center p-6 bg-transparent">
         
+        {/* Top Left Info Icon */}
+        <button
+          type="button"
+          onClick={() => setIsInfoModalOpen(true)}
+          className="absolute top-6 left-6 p-2.5 text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full backdrop-blur-md border border-white/10 transition-all duration-300 shadow-lg group flex items-center justify-center focus:outline-none z-20"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+          {/* Custom Tooltip */}
+          <span className="absolute left-full ml-3 whitespace-nowrap bg-black/60 backdrop-blur-sm text-xs text-zinc-200 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none border border-white/10 shadow-lg">
+            How to Use
+          </span>
+        </button>
+
         {/* Top Right Download Icon */}
         <a
           href="https://github.com/Gaurravvvv/AnyDesk/releases/download/v1.0.0/AnyDesk.Host.Setup.1.0.0.exe"
-          className="absolute top-6 right-6 p-2.5 text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full backdrop-blur-md border border-white/10 transition-all duration-300 shadow-lg group flex items-center justify-center focus:outline-none"
+          className="absolute top-6 right-6 p-2.5 text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full backdrop-blur-md border border-white/10 transition-all duration-300 shadow-lg group flex items-center justify-center focus:outline-none z-20"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -229,6 +247,70 @@ export function ConnectScreen({ status, onConnect, onCancel, errorMessage }: Con
           </div>
         </div>
       </div>
+
+      {/* Info Modal Overlay */}
+      {isInfoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md transition-all duration-300" style={{ padding: '2rem' }}>
+          <div className="bg-zinc-950/90 border border-white/10 shadow-2xl relative w-full max-w-2xl backdrop-blur-xl" style={{ padding: '3rem', borderRadius: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
+            <button 
+              onClick={() => setIsInfoModalOpen(false)}
+              className="absolute text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-all focus:outline-none"
+              style={{ top: '1.5rem', right: '1.5rem', padding: '0.5rem' }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+            
+            <h2 className="text-3xl font-light text-white flex items-center gap-4" style={{ marginBottom: '2.5rem' }}>
+              <span className="p-2.5 bg-blue-500/10 text-blue-400 rounded-full border border-blue-500/20 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+              </span>
+              How to Use Remote Desktop
+            </h2>
+            
+            <div className="text-zinc-300 font-light text-base">
+              <div className="bg-white/5 border border-white/5" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderRadius: '1rem' }}>
+                <h3 className="text-white font-medium text-lg flex items-center gap-3" style={{ marginBottom: '1rem' }}>
+                  <span className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-md uppercase tracking-wider font-bold">Step 1</span> 
+                  Want to Share Your Screen?
+                </h3>
+                <p style={{ lineHeight: '1.8', opacity: 0.9 }}>
+                  Click the download icon in the top right corner to download the <strong>Host Agent</strong>. Install and run it on your Windows machine. It will automatically generate a secure 6-character room code for you to share.
+                </p>
+              </div>
+              
+              <div className="bg-white/5 border border-white/5" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderRadius: '1rem' }}>
+                <h3 className="text-white font-medium text-lg flex items-center gap-3" style={{ marginBottom: '1rem' }}>
+                  <span className="text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-1 rounded-md uppercase tracking-wider font-bold">Step 2</span> 
+                  Want to Control a Screen?
+                </h3>
+                <p style={{ lineHeight: '1.8', opacity: 0.9 }}>
+                  Get the 6-character room code from the person running the Host Agent. Enter it into the center boxes on this page and click <strong>Connect</strong>.
+                </p>
+              </div>
+              
+              <div className="bg-white/5 border border-white/5" style={{ padding: '1.5rem', borderRadius: '1rem' }}>
+                <h3 className="text-white font-medium text-lg flex items-center gap-3" style={{ marginBottom: '1rem' }}>
+                  <span className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-md uppercase tracking-wider font-bold">Step 3</span> 
+                  Start the Session
+                </h3>
+                <p style={{ lineHeight: '1.8', opacity: 0.9 }}>
+                  Once you click Connect, the Host Agent will ask the owner to approve your request. After approval, you will instantly see their screen and be able to control their mouse and keyboard!
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex justify-end" style={{ marginTop: '2.5rem' }}>
+              <button 
+                onClick={() => setIsInfoModalOpen(false)}
+                className="text-white font-medium text-base bg-white/10 hover:bg-white/20 transition-all focus:outline-none shadow-lg backdrop-blur-md"
+                style={{ padding: '0.8rem 2.5rem', borderRadius: '9999px', border: '1px solid rgba(255,255,255,0.2)' }}
+              >
+                Got it!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
