@@ -69,9 +69,12 @@ function createHiddenWindow() {
     }
   });
 
-  // Pass signalingUrl as query parameter
-  const filePath = path.join(__dirname, '../renderer/hidden.html');
-  hiddenWindow.loadURL(`file://${filePath}?signalingUrl=${encodeURIComponent(signalingUrl)}`);
+  // Pass signalingUrl as query parameter safely using Electron's native loadFile options
+  hiddenWindow.loadFile(path.join(__dirname, '../renderer/hidden.html'), {
+    query: {
+      signalingUrl: signalingUrl
+    }
+  });
   
   hiddenWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     console.log(`[Renderer]: ${message}`);
