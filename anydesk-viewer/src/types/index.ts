@@ -47,8 +47,17 @@ export interface KeyboardEvent_ {
   timestamp: number;
 }
 
+// Phase 3: Delta-encoded mouse movement (smaller payload, prevents drift via periodic absolute sync)
+export interface MouseDeltaEvent {
+  type: 'mousedelta';
+  dx: number; // pixel delta (normalized 0-1 space)
+  dy: number;
+  timestamp: number;
+}
+
 export type ControlEvent =
   | MouseMoveEvent
+  | MouseDeltaEvent
   | MouseButtonEvent
   | MouseWheelEvent
   | KeyboardEvent_;

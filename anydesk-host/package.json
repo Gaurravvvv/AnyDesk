@@ -9,8 +9,9 @@
     "url": "https://github.com/anydesk-clone/anydesk"
   },
   "scripts": {
-    "dev": "tsc && npm run copy-html && electron .",
-    "build": "tsc && npm run copy-html && electron-builder",
+    "build-renderer": "esbuild src/renderer/hidden.ts --bundle --outfile=dist/renderer/hidden.js --platform=browser",
+    "dev": "tsc && npm run build-renderer && npm run copy-html && electron .",
+    "build": "tsc && npm run build-renderer && npm run copy-html && electron-builder",
     "copy-html": "node -e \"const fs=require('fs'); fs.mkdirSync('dist/renderer', {recursive:true}); fs.copyFileSync('src/renderer/hidden.html', 'dist/renderer/hidden.html')\""
   },
   "dependencies": {
@@ -21,6 +22,7 @@
     "@types/node": "^20.0.0",
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3",
+    "esbuild": "^0.28.1",
     "typescript": "^5.4.5"
   },
   "build": {
@@ -37,7 +39,9 @@
       "category": "public.app-category.productivity"
     },
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     }
   }
 }

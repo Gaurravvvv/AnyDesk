@@ -41,6 +41,15 @@ export function ConnectScreen({ status, onConnect, onCancel, errorMessage }: Con
       // Allow submit if not already loading and we have 6 chars.
       // (Even if status is 'error' or 'denied', submitting again should be allowed)
       if (code.length === 6 && status !== 'connecting' && status !== 'requesting' && status !== 'approved') {
+        try {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+              console.warn('[Fullscreen] Could not enter fullscreen:', err);
+            });
+          }
+        } catch (e) {
+          // ignore
+        }
         onConnect(code);
       }
     },

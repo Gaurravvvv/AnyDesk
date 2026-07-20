@@ -49,6 +49,12 @@ echo.
 echo    Server:  http://localhost:3001
 echo    Viewer:  http://localhost:5173
 echo    Host:    System Tray Icon
+echo.
+echo    [Remote Access]
+echo    To connect from another laptop on the same Wi-Fi:
+echo    1. Find your IP Address below:
+ipconfig | findstr IPv4
+echo    2. On the other laptop, open: http://YOUR_IP_ADDRESS:5173
 echo ========================================
 echo.
 echo Press any key to exit this launcher...

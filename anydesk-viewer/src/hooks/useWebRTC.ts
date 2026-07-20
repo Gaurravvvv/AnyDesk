@@ -18,6 +18,8 @@ export function useWebRTC(socket: Socket | null) {
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const mouseChannelRef = useRef<RTCDataChannel | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  // Phase 2: Cursor callback for overlay
+  const cursorCallbackRef = useRef<((x: number, y: number, cursor: string) => void) | null>(null);
 
   const [connectionState, setConnectionState] = useState<ConnectionStatus>('idle');
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -50,6 +52,23 @@ export function useWebRTC(socket: Socket | null) {
           setRemoteStream(stream);
           setConnectionState('connected');
           onStreamReady?.(stream);
+
+          // Phase 4: Minimize playout/jitter buffer for lowest latency
+          // playoutDelayHint tells the browser to render frames ASAP rather than buffering
+          // for smoothness. Freshness > smoothness for a remote control app.
+          const receiver = event.receiver;
+          if (receiver && 'playoutDelayHint' in receiver) {
+            try {
+              (receiver as any).playoutDelayHint = 0;
+              console.log('[Phase4] Set playoutDelayHint to 0 (minimum latency mode)');
+            } catch (e) {
+              console.warn('[Phase4] Failed to set playoutDelayHint:', e);
+            }
+          } else {
+            // playoutDelayHint is not universally supported — Chromium 94+ only.
+            // When unavailable, the browser uses its default jitter buffer (~100-200ms).
+            console.log('[Phase4] playoutDelayHint not supported — using default jitter buffer');
+          }
         }
       };
 
@@ -93,6 +112,19 @@ export function useWebRTC(socket: Socket | null) {
           mouseChannelRef.current = dc;
         } else if (dc.label === 'keys') {
           dataChannelRef.current = dc;
+        } else if (dc.label === 'cursor') {
+          // Phase 2: Cursor feedback channel from host
+          dc.onmessage = (msg) => {
+            try {
+              const data = JSON.parse(msg.data);
+              if (data.type === 'cursor' && cursorCallbackRef.current) {
+                cursorCallbackRef.current(data.x, data.y, data.cursor || 'default');
+              }
+            } catch (e) {
+              // ignore malformed cursor data
+            }
+          };
+          console.log('[Phase2] Cursor feedback channel connected');
         }
       };
 
@@ -189,5 +221,11 @@ export function useWebRTC(socket: Socket | null) {
     initConnection,
     sendControlEvent,
     disconnect,
+    // Phase 2: Set callback for cursor overlay updates
+    setCursorCallback: (cb: ((x: number, y: number, cursor: string) => void) | null) => {
+      cursorCallbackRef.current = cb;
+    },
+    // Phase 3: Expose mouse channel buffered amount for adaptive throttling
+    getMouseBufferedAmount: () => mouseChannelRef.current?.bufferedAmount ?? 0,
   };
 }

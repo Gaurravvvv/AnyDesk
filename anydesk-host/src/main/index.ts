@@ -11,6 +11,7 @@ const inputService = new InputService();
 
 // Disable WebRTC mDNS to allow local network testing without TURN
 app.commandLine.appendSwitch('disable-webrtc-hide-local-ips-with-mdns');
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
 app.whenReady().then(() => {
   // Create system tray
@@ -31,6 +32,28 @@ app.on('window-all-closed', function () {
 });
 
 function createHiddenWindow() {
+  // Read signaling URL from process.env or packaged package.json
+  let signalingUrl = 'http://localhost:3001';
+  try {
+    const fs = require('fs');
+    const pkgPath = path.join(app.getAppPath(), 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      if (pkg.signaling_url && !pkg.signaling_url.startsWith('$')) {
+        signalingUrl = pkg.signaling_url;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to read packaged package.json:', e);
+  }
+
+  // Allow environment override
+  if (process.env.SIGNALING_URL) {
+    signalingUrl = process.env.SIGNALING_URL;
+  }
+
+  console.log(`[Host Main] Resolved Signaling URL: ${signalingUrl}`);
+
   hiddenWindow = new BrowserWindow({
     width: 400,
     height: 350,
@@ -46,7 +69,13 @@ function createHiddenWindow() {
     }
   });
 
-  hiddenWindow.loadFile(path.join(__dirname, '../renderer/hidden.html'));
+  // Pass signalingUrl as query parameter
+  const filePath = path.join(__dirname, '../renderer/hidden.html');
+  hiddenWindow.loadURL(`file://${filePath}?signalingUrl=${encodeURIComponent(signalingUrl)}`);
+  
+  hiddenWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer]: ${message}`);
+  });
 }
 
 let activeSourceId: string | null = null;
@@ -54,7 +83,13 @@ let currentRoomCode: string | null = null;
 
 async function updateTrayMenu(code: string | null) {
   if (!tray) return;
-  const sources = await desktopCapturer.getSources({ types: ['screen'] });
+  let sources: Electron.DesktopCapturerSource[] = [];
+  try {
+    sources = await desktopCapturer.getSources({ types: ['screen'] });
+  } catch (err) {
+    console.error('Failed to get screen sources:', err);
+  }
+  
   if (!activeSourceId && sources.length > 0) {
     activeSourceId = sources[0].id;
   }

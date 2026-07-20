@@ -6,20 +6,26 @@ import {
   serializeWheel,
   serializeKeyboard,
 } from '../services/inputSerializer';
-import { config } from '../config';
+
+// Phase 3: Adaptive throttle thresholds
+const THROTTLE_FAST_MS = 16;   // ~60Hz
+const THROTTLE_SLOW_MS = 33;   // ~30Hz
+const BUFFER_THRESHOLD = 16384; // 16KB — switch to slow mode above this
 
 /**
  * Captures mouse and keyboard input on a target element,
  * serializes events, and sends them through the provided callback.
  *
  * Mouse coordinates are normalized to 0-1 relative to the video element.
- * Mousemove events are throttled to ~60fps.
+ * Phase 3: Adaptive throttling — 60Hz normally, 30Hz when DataChannel buffer backs up.
  */
 export function useInputCapture(
-  onSendEvent: (event: ControlEvent) => void
+  onSendEvent: (event: ControlEvent) => void,
+  getMouseBufferedAmount?: () => number
 ) {
   const lastMoveTime = useRef(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const isThrottledRef = useRef(false); // Phase 3: track current throttle mode
 
   const attachListeners = useCallback(
     (container: HTMLDivElement) => {
@@ -27,10 +33,27 @@ export function useInputCapture(
 
       const getRect = () => container.getBoundingClientRect();
 
-      // ── Mouse move (throttled) ──
+      // ── Mouse move (adaptively throttled) ──
       const handleMouseMove = (e: MouseEvent) => {
         const now = Date.now();
-        if (now - lastMoveTime.current < config.inputThrottleMs) return;
+
+        // Phase 3: Adaptive throttle based on DataChannel buffer
+        let throttleMs = THROTTLE_FAST_MS;
+        if (getMouseBufferedAmount) {
+          const buffered = getMouseBufferedAmount();
+          if (buffered > BUFFER_THRESHOLD) {
+            throttleMs = THROTTLE_SLOW_MS;
+            if (!isThrottledRef.current) {
+              console.log(`[Phase3] DataChannel buffer high (${buffered}B) — throttling to ${THROTTLE_SLOW_MS}ms`);
+              isThrottledRef.current = true;
+            }
+          } else if (isThrottledRef.current) {
+            console.log(`[Phase3] DataChannel buffer drained (${buffered}B) — restoring ${THROTTLE_FAST_MS}ms`);
+            isThrottledRef.current = false;
+          }
+        }
+
+        if (now - lastMoveTime.current < throttleMs) return;
         lastMoveTime.current = now;
 
         onSendEvent(serializeMouseMove(e, getRect()));
@@ -108,7 +131,7 @@ export function useInputCapture(
         window.removeEventListener('keyup', handleKeyUp);
       };
     },
-    [onSendEvent]
+    [onSendEvent, getMouseBufferedAmount]
   );
 
   return { attachListeners };

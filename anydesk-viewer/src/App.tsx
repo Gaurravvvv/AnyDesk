@@ -8,7 +8,7 @@ import type { ConnectionStatus } from './types';
 
 function App() {
   const { socket } = useSocket();
-  const { connectionState, remoteStream, initConnection, sendControlEvent, disconnect } =
+  const { connectionState, remoteStream, initConnection, sendControlEvent, disconnect, getMouseBufferedAmount } =
     useWebRTC(socket);
 
   const [status, setStatus] = useState<ConnectionStatus>('idle');
@@ -49,6 +49,11 @@ function App() {
         console.log('[App] Connection denied:', data.reason);
         setStatus('denied');
         setErrorMessage(data.reason);
+        try {
+          if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+          }
+        } catch (e) {}
         cleanup();
       };
 
@@ -58,6 +63,11 @@ function App() {
         setStatus('disconnected');
         setErrorMessage(data.reason);
         isIntentionalDisconnect.current = true; // ended cleanly by host
+        try {
+          if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+          }
+        } catch (e) {}
         disconnect();
         cleanup();
       };
@@ -89,6 +99,11 @@ function App() {
     disconnect();
     setStatus('idle');
     setErrorMessage(undefined);
+    try {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch (e) {}
   }, [socket, disconnect]);
 
   // ── Auto-Reconnect Logic Removed ──
@@ -109,6 +124,7 @@ function App() {
           remoteStream={remoteStream}
           onSendEvent={sendControlEvent}
           onDisconnect={handleDisconnect}
+          getMouseBufferedAmount={getMouseBufferedAmount}
         />
       ) : (
         <ConnectScreen

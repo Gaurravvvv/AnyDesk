@@ -7,19 +7,21 @@ mouse.config.autoDelayMs = 0;
 keyboard.config.autoDelayMs = 0;
 
 interface ValidatedEvent {
-  type: 'mousemove' | 'mousedown' | 'mouseup' | 'wheel' | 'keydown' | 'keyup';
+  type: 'mousemove' | 'mousedown' | 'mouseup' | 'wheel' | 'keydown' | 'keyup' | 'mousedelta';
   x?: number;
   y?: number;
   button?: 'left' | 'right' | 'middle';
   deltaX?: number;
   deltaY?: number;
+  dx?: number;  // Phase 3: mouse delta
+  dy?: number;  // Phase 3: mouse delta
   key?: string;
   code?: string;
   modifiers?: { ctrl: boolean; shift: boolean; alt: boolean; meta: boolean };
   timestamp?: number;
 }
 
-const VALID_TYPES = new Set(['mousemove', 'mousedown', 'mouseup', 'wheel', 'keydown', 'keyup']);
+const VALID_TYPES = new Set(['mousemove', 'mousedown', 'mouseup', 'wheel', 'keydown', 'keyup', 'mousedelta']);
 const VALID_BUTTONS = new Set(['left', 'right', 'middle']);
 
 function validateEvent(payload: any): ValidatedEvent | null {
@@ -30,6 +32,11 @@ function validateEvent(payload: any): ValidatedEvent | null {
   if (['mousemove', 'mousedown', 'mouseup', 'wheel'].includes(payload.type)) {
     if (typeof payload.x !== 'number' || typeof payload.y !== 'number') return null;
     if (payload.x < -0.1 || payload.x > 1.1 || payload.y < -0.1 || payload.y > 1.1) return null;
+  }
+  
+  // Phase 3: Validate delta events
+  if (payload.type === 'mousedelta') {
+    if (typeof payload.dx !== 'number' || typeof payload.dy !== 'number') return null;
   }
   
   // Validate button field
@@ -52,6 +59,9 @@ export class InputService {
   private screenHeight = 1080;
   private pressedKeys = new Set<Key>();
   private pressedMouseButtons = new Set<Button>();
+  // Phase 3: Track current absolute cursor position for delta accumulation
+  private cursorX = 0;
+  private cursorY = 0;
 
   constructor() {
     this.init();
@@ -76,7 +86,16 @@ export class InputService {
         case 'mousemove':
           const x = Math.max(0, Math.min(this.screenWidth, validated.x! * this.screenWidth));
           const y = Math.max(0, Math.min(this.screenHeight, validated.y! * this.screenHeight));
+          this.cursorX = x;
+          this.cursorY = y;
           await mouse.setPosition(new Point(x, y));
+          break;
+
+        // Phase 3: Delta mouse movement — accumulate onto current position
+        case 'mousedelta':
+          this.cursorX = Math.max(0, Math.min(this.screenWidth, this.cursorX + validated.dx! * this.screenWidth));
+          this.cursorY = Math.max(0, Math.min(this.screenHeight, this.cursorY + validated.dy! * this.screenHeight));
+          await mouse.setPosition(new Point(this.cursorX, this.cursorY));
           break;
 
         case 'mousedown':

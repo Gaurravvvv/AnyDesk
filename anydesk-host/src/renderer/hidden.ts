@@ -5,6 +5,7 @@ let socket: Socket | null = null;
 let peerConnection: RTCPeerConnection | null = null;
 let localStream: MediaStream | null = null;
 let dataChannel: RTCDataChannel | null = null;
+let cursorChannel: RTCDataChannel | null = null;
 let currentViewerId: string | null = null;
 let currentRoomCode: string | null = null;
 let statsInterval: NodeJS.Timeout | null = null;
@@ -31,21 +32,28 @@ function updateUI(code: string | null, status: string, isConnected: boolean) {
   }
 }
 
+// Safe env getter since process is undefined in the browser context
+const getEnv = (key: string) => {
+  try { return process.env[key]; } catch(e) { return undefined; }
+};
+
 // Configuration for WebRTC
 const rtcConfig: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     {
-      urls: process.env.TURN_URL || 'turn:openrelay.metered.ca:80',
-      username: process.env.TURN_USERNAME || 'openrelayproject',
-      credential: process.env.TURN_PASSWORD || 'openrelayproject',
+      urls: getEnv('TURN_URL') || 'turn:openrelay.metered.ca:80',
+      username: getEnv('TURN_USERNAME') || 'openrelayproject',
+      credential: getEnv('TURN_PASSWORD') || 'openrelayproject',
     }
   ]
 };
 
 // Connect to signaling server
-const SIGNALING_URL = process.env.SIGNALING_URL || 'http://localhost:3001';
+const urlParams = new URLSearchParams(window.location.search);
+const SIGNALING_URL = urlParams.get('signalingUrl') || getEnv('SIGNALING_URL') || 'http://localhost:3001';
+console.log(`[Host Renderer] Connecting to signaling server at: ${SIGNALING_URL}`);
 socket = io(SIGNALING_URL);
 
 socket.on('connect', () => {
@@ -54,9 +62,19 @@ socket.on('connect', () => {
 });
 
 socket.on('room-created', (data: { code: string }) => {
-  currentRoomCode = data.code;
-  window.hostAPI.sendRoomCodeUpdated(data.code);
-  updateUI(data.code, 'Waiting for connection...', false);
+  console.log('[Renderer] Received room-created event. Code:', data.code);
+  try {
+    currentRoomCode = data.code;
+    if (window.hostAPI) {
+      window.hostAPI.sendRoomCodeUpdated(data.code);
+    } else {
+      console.error('[Renderer] window.hostAPI is undefined! Preload script failed.');
+    }
+    updateUI(data.code, 'Waiting for connection...', false);
+    console.log('[Renderer] UI updated with code.');
+  } catch (err) {
+    console.error('[Renderer] Error updating UI:', err);
+  }
 });
 
 socket.on('connection-request', async (data: { viewerId: string; roomCode: string }) => {
@@ -128,13 +146,22 @@ async function startWebRTC() {
       try {
         const payload = JSON.parse(msg.data);
         window.hostAPI.sendControlEvent(payload);
+        // Phase 2: Echo cursor position back to viewer for low-latency cursor overlay
+        if ((payload.type === 'mousemove' || payload.type === 'mousedelta') && cursorChannel && cursorChannel.readyState === 'open') {
+          cursorChannel.send(JSON.stringify({
+            type: 'cursor',
+            x: payload.x,
+            y: payload.y,
+            cursor: 'default',
+          }));
+        }
       } catch (e) {
         console.error('Invalid control data', e);
       }
     };
   };
 
-  // Create two channels: unreliable for mouse, reliable for clicks/keys
+  // Create three channels: unreliable for mouse, reliable for clicks/keys, cursor for feedback
   const mouseChannel = peerConnection.createDataChannel('mouse', {
     ordered: false,
     maxRetransmits: 0,    // fire-and-forget, like UDP
@@ -142,6 +169,13 @@ async function startWebRTC() {
   const keysChannel = peerConnection.createDataChannel('keys', {
     ordered: true,        // reliable for keystrokes and clicks
   });
+  // Phase 2: Cursor feedback channel (host → viewer), unreliable
+  cursorChannel = peerConnection.createDataChannel('cursor', {
+    ordered: false,
+    maxRetransmits: 0,
+  });
+  cursorChannel.onopen = () => console.log('[Phase2] Cursor feedback channel open');
+  cursorChannel.onclose = () => console.log('[Phase2] Cursor feedback channel closed');
 
   // Use keysChannel as the "primary" for UI status
   setupDataChannel(mouseChannel);
@@ -160,20 +194,34 @@ async function startWebRTC() {
           mandatory: {
             chromeMediaSource: 'desktop',
             chromeMediaSourceId: sourceId,
-            maxWidth: 1920,
-            maxHeight: 1080,
             maxFrameRate: 60
           }
         } as any
       });
     }
 
+    // Add video and audio tracks to peer connection
     localStream.getTracks().forEach(track => {
       if (track.kind === 'video') {
-        track.contentHint = 'detail';
+        track.contentHint = 'motion'; // Phase 1c: prioritize smoothness over text sharpness
+        console.log('[Phase1] Set contentHint to "motion"');
       }
       peerConnection?.addTrack(track, localStream!);
     });
+
+    // ── Phase 1b: Dynamic bitrate from captured resolution ──
+    const videoTrack = localStream.getVideoTracks()[0];
+    const trackSettings = videoTrack?.getSettings();
+    const captureWidth = trackSettings?.width || 1920;
+    const captureHeight = trackSettings?.height || 1080;
+    const targetFPS = 30;
+    const bitsPerPixelPerFrame = 0.1;
+    // Dynamic bitrate: ~0.1 bits/pixel/frame × resolution × fps, capped at 15 Mbps
+    const dynamicBitrate = Math.min(
+      Math.round(captureWidth * captureHeight * bitsPerPixelPerFrame * targetFPS),
+      15_000_000
+    );
+    console.log(`[Phase1] Capture: ${captureWidth}x${captureHeight} @ ${targetFPS}fps → dynamic bitrate: ${(dynamicBitrate / 1_000_000).toFixed(1)} Mbps`);
 
     // Optimize video sender for latency
     const senders = peerConnection.getSenders();
@@ -188,13 +236,34 @@ async function startWebRTC() {
       
       params.encodings[0] = {
         ...params.encodings[0],
-        maxBitrate: 2_500_000,          // 2.5 Mbps cap — good for 1080p desktop
-        maxFramerate: 30,               // start at 30fps, save bandwidth
-        // Note: scaleResolutionDownBy is not set = native resolution
+        maxBitrate: dynamicBitrate,       // Phase 1b: dynamic based on resolution
+        maxFramerate: targetFPS,
       };
-      params.degradationPreference = 'maintain-resolution';
+      params.degradationPreference = 'balanced'; // Phase 1c: balance FPS vs resolution
+      console.log(`[Phase1] Set degradationPreference to "balanced"`);
       
       await videoSender.setParameters(params);
+    }
+
+    // ── Phase 1a: Force H.264 codec preference ──
+    const transceiver = peerConnection.getTransceivers().find(t => t.sender.track?.kind === 'video');
+    if (transceiver && typeof transceiver.setCodecPreferences === 'function') {
+      try {
+        const capabilities = RTCRtpReceiver.getCapabilities?.('video');
+        if (capabilities) {
+          const codecs = capabilities.codecs;
+          const h264 = codecs.filter(c => c.mimeType === 'video/H264');
+          const vp8  = codecs.filter(c => c.mimeType === 'video/VP8');
+          const rest = codecs.filter(c => c.mimeType !== 'video/H264' && c.mimeType !== 'video/VP8');
+          const preferred = [...h264, ...vp8, ...rest];
+          transceiver.setCodecPreferences(preferred);
+          console.log(`[Phase1] Codec preference set: ${h264.length} H264 profiles, ${vp8.length} VP8 fallbacks, ${rest.length} others`);
+        }
+      } catch (codecErr) {
+        console.warn('[Phase1] Could not set codec preferences:', codecErr);
+      }
+    } else {
+      console.log('[Phase1] setCodecPreferences not available — browser will negotiate default codec');
     }
 
     // Create offer
@@ -229,22 +298,22 @@ async function startWebRTC() {
               const totalPackets = report.packetsSent || 1;
               const lossRate = packetLoss / totalPackets;
               
-              console.log(`[Stats] Bitrate: ${(bitrate / 1_000_000).toFixed(2)} Mbps | Loss: ${(lossRate * 100).toFixed(1)}% | FPS: ${report.framesPerSecond || 'N/A'}`);
+              console.log(`[Stats] Bitrate: ${(bitrate / 1_000_000).toFixed(2)} Mbps | Loss: ${(lossRate * 100).toFixed(1)}% | FPS: ${report.framesPerSecond || 'N/A'} | Codec: ${report.codecId || 'pending'}`);
               
               // Adaptive quality: degrade if losing packets
               const videoSender = peerConnection?.getSenders().find(s => s.track?.kind === 'video');
               if (videoSender) {
                 const params = videoSender.getParameters();
                 if (params.encodings && params.encodings[0]) {
-                  const currentMax = params.encodings[0].maxBitrate || 2_500_000;
+                  const currentMax = params.encodings[0].maxBitrate || dynamicBitrate;
                   
                   if (lossRate > 0.05 && currentMax > 500_000) {
                     // High packet loss — reduce bitrate by 25%
                     params.encodings[0].maxBitrate = Math.round(currentMax * 0.75);
                     videoSender.setParameters(params);
                     console.log(`[Stats] ⬇ Reduced bitrate to ${params.encodings[0].maxBitrate}`);
-                  } else if (lossRate < 0.01 && currentMax < 4_000_000) {
-                    // Low packet loss — increase bitrate by 10%
+                  } else if (lossRate < 0.01 && currentMax < dynamicBitrate * 1.5) {
+                    // Low packet loss — increase bitrate by 10%, up to 150% of dynamic target
                     params.encodings[0].maxBitrate = Math.round(currentMax * 1.10);
                     videoSender.setParameters(params);
                     console.log(`[Stats] ⬆ Increased bitrate to ${params.encodings[0].maxBitrate}`);
@@ -277,6 +346,10 @@ function cleanupSession() {
   if (dataChannel) {
     dataChannel.close();
     dataChannel = null;
+  }
+  if (cursorChannel) {
+    cursorChannel.close();
+    cursorChannel = null;
   }
   if (peerConnection) {
     peerConnection.close();

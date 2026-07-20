@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { ControlBar } from './ControlBar';
+import { useEffect, useRef } from 'react';
+import { DraggableDisconnect } from './DraggableDisconnect';
 import { useInputCapture } from '../hooks/useInputCapture';
 import type { ControlEvent } from '../types';
 
@@ -7,13 +7,13 @@ interface SessionScreenProps {
   remoteStream: MediaStream;
   onSendEvent: (event: ControlEvent) => void;
   onDisconnect: () => void;
+  getMouseBufferedAmount: () => number;
 }
 
-export function SessionScreen({ remoteStream, onSendEvent, onDisconnect }: SessionScreenProps) {
+export function SessionScreen({ remoteStream, onSendEvent, onDisconnect, getMouseBufferedAmount }: SessionScreenProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const { attachListeners } = useInputCapture(onSendEvent);
+  const { attachListeners } = useInputCapture(onSendEvent, getMouseBufferedAmount);
 
   // Attach the remote stream to the video element
   useEffect(() => {
@@ -33,38 +33,9 @@ export function SessionScreen({ remoteStream, onSendEvent, onDisconnect }: Sessi
     }
   }, [attachListeners]);
 
-  // Fullscreen toggle
-  const toggleFullscreen = useCallback(async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
-      } else {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
-      }
-    } catch (err) {
-      console.error('[Fullscreen] Error:', err);
-    }
-  }, []);
-
-  // Listen for fullscreen changes (e.g. Escape key)
-  useEffect(() => {
-    const handleChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-    document.addEventListener('fullscreenchange', handleChange);
-    return () => document.removeEventListener('fullscreenchange', handleChange);
-  }, []);
-
   return (
     <div className="h-full w-full bg-black relative">
-      {/* Control bar */}
-      <ControlBar
-        onDisconnect={onDisconnect}
-        onFullscreen={toggleFullscreen}
-        isFullscreen={isFullscreen}
-      />
+      <DraggableDisconnect onDisconnect={onDisconnect} />
 
       {/* Remote video */}
       <div

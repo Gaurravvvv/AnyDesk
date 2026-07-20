@@ -40,8 +40,8 @@ async function main(): Promise<void> {
   initializeSocketHandlers(io);
 
   // ── Start server ─────────────────────────────────────
-  server.listen(config.port, () => {
-    console.log(`\n🚀 Signaling server running on http://localhost:${config.port}`);
+  server.listen(config.port, '0.0.0.0', () => {
+    console.log(`\n🚀 Signaling server running on http://localhost:${config.port} and http://<YOUR_IP>:${config.port}`);
     console.log(`   Environment: ${config.nodeEnv}`);
     console.log(`   CORS origins: ${Array.isArray(config.cors.origins) ? config.cors.origins.join(', ') : config.cors.origins}\n`);
   });

@@ -1,14 +1,11 @@
 services:
   - type: web
-    name: anydesk-signaling-server
+    name: anydesk-server
     env: node
+    plan: free
+    rootDir: anydesk-server
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: 3001
       - key: CORS_ORIGINS
         value: "*" # Update this via Render dashboard later to your actual Vercel URL for better security
-    autoDeploy: false
