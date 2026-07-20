@@ -27,6 +27,9 @@
   },
   "build": {
     "appId": "com.anydesk.host",
+    "directories": {
+      "output": "release"
+    },
     "extraMetadata": {
       "signaling_url": "${env.SIGNALING_URL}"
     },
