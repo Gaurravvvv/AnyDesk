@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import http from 'http';
 import cors from 'cors';
 import { Server } from 'socket.io';
@@ -14,7 +14,7 @@ async function main(): Promise<void> {
   app.use(express.json());
 
   // Health check
-  app.get('/health', (_req, res) => {
+  app.get('/health', (_req: Request, res: Response) => {
     res.json({
       status: 'ok',
       uptime: process.uptime(),
