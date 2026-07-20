@@ -40,7 +40,7 @@ function createHiddenWindow() {
     if (fs.existsSync(pkgPath)) {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
       if (pkg.signaling_url && !pkg.signaling_url.startsWith('$')) {
-        signalingUrl = pkg.signaling_url;
+        signalingUrl = pkg.signaling_url.trim();
       }
     }
   } catch (e) {
@@ -49,7 +49,7 @@ function createHiddenWindow() {
 
   // Allow environment override
   if (process.env.SIGNALING_URL) {
-    signalingUrl = process.env.SIGNALING_URL;
+    signalingUrl = process.env.SIGNALING_URL.trim();
   }
 
   console.log(`[Host Main] Resolved Signaling URL: ${signalingUrl}`);

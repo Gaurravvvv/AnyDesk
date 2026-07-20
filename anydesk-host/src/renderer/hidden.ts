@@ -52,7 +52,7 @@ const rtcConfig: RTCConfiguration = {
 
 // Connect to signaling server
 const urlParams = new URLSearchParams(window.location.search);
-const SIGNALING_URL = urlParams.get('signalingUrl') || getEnv('SIGNALING_URL') || 'http://localhost:3001';
+const SIGNALING_URL = (urlParams.get('signalingUrl') || getEnv('SIGNALING_URL') || 'http://localhost:3001').trim();
 console.log(`[Host Renderer] Connecting to signaling server at: ${SIGNALING_URL}`);
 socket = io(SIGNALING_URL);
 
