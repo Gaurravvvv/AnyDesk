@@ -59,7 +59,8 @@ function createHiddenWindow() {
     height: 350,
     show: true, // Window is now visible and in taskbar
     title: 'AnyDesk Host',
-    resizable: false,
+    resizable: true,
+    maximizable: true,
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,

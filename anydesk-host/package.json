@@ -9,7 +9,7 @@
     "url": "https://github.com/anydesk-clone/anydesk"
   },
   "scripts": {
-    "build-renderer": "esbuild src/renderer/hidden.ts --bundle --outfile=dist/renderer/hidden.js --platform=browser",
+    "build-renderer": "node build-renderer.js",
     "dev": "tsc && npm run build-renderer && npm run copy-html && electron .",
     "build": "tsc && npm run build-renderer && npm run copy-html && electron-builder",
     "copy-html": "node -e \"const fs=require('fs'); fs.mkdirSync('dist/renderer', {recursive:true}); fs.copyFileSync('src/renderer/hidden.html', 'dist/renderer/hidden.html')\""
