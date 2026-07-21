@@ -51,9 +51,9 @@ const rtcConfig: RTCConfiguration = {
 };
 
 // Connect to signaling server
-const urlParams = new URLSearchParams(window.location.search);
-const envUrl = typeof process !== 'undefined' && process.env ? process.env.SIGNALING_URL : undefined;
-const SIGNALING_URL = (urlParams.get('signalingUrl') || envUrl || 'http://localhost:3001').trim();
+// SIGNALING_URL is baked in at compile time by build-renderer.js via esbuild's `define`.
+// process.env.SIGNALING_URL is replaced with a string literal during compilation.
+const SIGNALING_URL = (process.env.SIGNALING_URL || 'http://localhost:3001').trim();
 console.log(`[Host Renderer] Connecting to signaling server at: ${SIGNALING_URL}`);
 socket = io(SIGNALING_URL);
 

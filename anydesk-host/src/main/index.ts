@@ -32,32 +32,13 @@ app.on('window-all-closed', function () {
 });
 
 function createHiddenWindow() {
-  // Read signaling URL from process.env or packaged package.json
-  let signalingUrl = 'http://localhost:3001';
-  try {
-    const fs = require('fs');
-    const pkgPath = path.join(app.getAppPath(), 'package.json');
-    if (fs.existsSync(pkgPath)) {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-      if (pkg.signaling_url && !pkg.signaling_url.startsWith('$')) {
-        signalingUrl = pkg.signaling_url.trim();
-      }
-    }
-  } catch (e) {
-    console.error('Failed to read packaged package.json:', e);
-  }
-
-  // Allow environment override
-  if (process.env.SIGNALING_URL) {
-    signalingUrl = process.env.SIGNALING_URL.trim();
-  }
-
-  console.log(`[Host Main] Resolved Signaling URL: ${signalingUrl}`);
+  // Signaling URL is baked into hidden.js at compile time by build-renderer.js.
+  // No runtime resolution needed — this eliminates the localhost fallback bug.
 
   hiddenWindow = new BrowserWindow({
     width: 400,
     height: 350,
-    show: true, // Window is now visible and in taskbar
+    show: true,
     title: 'AnyDesk Host',
     resizable: true,
     maximizable: true,
@@ -70,12 +51,7 @@ function createHiddenWindow() {
     }
   });
 
-  // Pass signalingUrl as query parameter safely using Electron's native loadFile options
-  hiddenWindow.loadFile(path.join(__dirname, '../renderer/hidden.html'), {
-    query: {
-      signalingUrl: signalingUrl
-    }
-  });
+  hiddenWindow.loadFile(path.join(__dirname, '../renderer/hidden.html'));
   
   hiddenWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     console.log(`[Renderer]: ${message}`);
