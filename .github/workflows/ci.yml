@@ -1,0 +1,81 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  # Replace Gaurravvvv with your actual lowercase github username if needed
+  SERVER_IMAGE_NAME: gaurravvvv/anydesk-server
+  VIEWER_IMAGE_NAME: gaurravvvv/anydesk-viewer
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ─── SERVER ───────────────────────────────────────────────
+      - name: Build Server Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./anydesk-server
+          file: ./anydesk-server/Dockerfile
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.SERVER_IMAGE_NAME }}:latest
+          load: true # Load into local docker daemon for Trivy scanning
+
+      - name: Run Trivy vulnerability scanner on Server
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.SERVER_IMAGE_NAME }}:latest'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Push Server Image
+        if: success()
+        run: docker push ${{ env.REGISTRY }}/${{ env.SERVER_IMAGE_NAME }}:latest
+
+      # ─── VIEWER ───────────────────────────────────────────────
+      - name: Build Viewer Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./anydesk-viewer
+          file: ./anydesk-viewer/Dockerfile
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.VIEWER_IMAGE_NAME }}:latest
+          load: true
+          build-args: |
+            VITE_SIGNALING_URL=http://localhost:3001
+
+      - name: Run Trivy vulnerability scanner on Viewer
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.VIEWER_IMAGE_NAME }}:latest'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Push Viewer Image
+        if: success()
+        run: docker push ${{ env.REGISTRY }}/${{ env.VIEWER_IMAGE_NAME }}:latest

@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: anydesk-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - anydesk-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  server:
+    build:
+      context: ./anydesk-server
+      dockerfile: Dockerfile
+    container_name: anydesk-server
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - CORS_ORIGINS=*
+      - REDIS_URL=redis://redis:6379
+    networks:
+      - anydesk-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  viewer:
+    build:
+      context: ./anydesk-viewer
+      dockerfile: Dockerfile
+      args:
+        - VITE_SIGNALING_URL=http://localhost:3001
+    container_name: anydesk-viewer
+    ports:
+      - "8080:80"
+    networks:
+      - anydesk-network
+    depends_on:
+      server:
+        condition: service_healthy
+
+networks:
+  anydesk-network:
+    driver: bridge
+
+volumes:
+  redis_data:
