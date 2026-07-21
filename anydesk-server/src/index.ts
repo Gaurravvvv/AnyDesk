@@ -45,9 +45,18 @@ async function main(): Promise<void> {
 
   // ── Redis Adapter for Horizontal Scaling ─────────────
   const pubClient = await getRedisClient();
-  const subClient = pubClient.duplicate();
-  await subClient.connect();
-  io.adapter(createAdapter(pubClient, subClient));
+  if (pubClient) {
+    try {
+      const subClient = pubClient.duplicate();
+      await subClient.connect();
+      io.adapter(createAdapter(pubClient, subClient));
+      console.log('[Redis] Socket.io Redis adapter attached successfully.');
+    } catch (err: any) {
+      console.warn('[Redis] Failed to attach Socket.io Redis adapter:', err.message);
+    }
+  } else {
+    console.log('[Server] Operating with default in-memory Socket.io adapter.');
+  }
 
   // ── Socket handlers ──────────────────────────────────
   initializeSocketHandlers(io);
