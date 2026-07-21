@@ -12,6 +12,8 @@ const inputService = new InputService();
 // Disable WebRTC mDNS to allow local network testing without TURN
 app.commandLine.appendSwitch('disable-webrtc-hide-local-ips-with-mdns');
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+// CRITICAL: Disable window occlusion to prevent WebRTC/screen capture from freezing when the host window is minimized
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
 app.whenReady().then(() => {
   // Create system tray
@@ -61,14 +63,6 @@ function createHiddenWindow() {
     console.log('[Host Main] Blocked navigation attempt — WebRTC connection preserved');
   });
 
-  // Prevent the host window from being minimized by remote input clicks.
-  // When minimized, some Electron versions throttle or stop the renderer,
-  // breaking the screen capture pipeline.
-  hiddenWindow.on('minimize', (event: Electron.Event) => {
-    event.preventDefault();
-    hiddenWindow?.restore();
-  });
-  
   hiddenWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     console.log(`[Renderer]: ${message}`);
   });
