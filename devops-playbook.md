@@ -20,6 +20,13 @@ docker-compose up --build -d
 docker-compose logs -f
 ```
 
+1. Use Helm to install the Prometheus & Grafana stack into your cluster:
+```powershell
+.\.bin\helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+.\.bin\helm repo update
+.\.bin\helm install monitoring prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace
+```
+
 
 ## Phase 2: Automated CI/CD & Security Scanning
 

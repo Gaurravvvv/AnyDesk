@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: anydesk-grafana-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  anydesk-dashboard.json: |-
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "panels": [
+        {
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "id": 1,
+          "title": "AnyDesk Server - CPU Utilization (%)",
+          "type": "timeseries",
+          "targets": [{ "expr": "sum(rate(process_cpu_seconds_total[1m])) * 100", "legendFormat": "CPU Usage %" }]
+        },
+        {
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "id": 2,
+          "title": "Node.js Heap Memory Usage",
+          "type": "timeseries",
+          "targets": [
+            { "expr": "nodejs_heap_size_used_bytes", "legendFormat": "Heap Used" },
+            { "expr": "nodejs_heap_size_total_bytes", "legendFormat": "Heap Total" }
+          ]
+        },
+        {
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "id": 3,
+          "title": "Event Loop Lag (Seconds)",
+          "type": "timeseries",
+          "targets": [{ "expr": "nodejs_eventloop_lag_seconds", "legendFormat": "Event Loop Lag" }]
+        }
+      ],
+      "refresh": "5s",
+      "schemaVersion": 38,
+      "title": "AnyDesk Cluster & Server Observability",
+      "uid": "anydesk-dashboard"
+    }
