@@ -1,0 +1,2 @@
+# Ignore golang stdlib CVE in typescript/esbuild node_modules binary
+CVE-2026-39822
