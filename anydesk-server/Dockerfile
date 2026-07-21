@@ -1,20 +1,20 @@
-FROM node:20-alpine
-
-# Set working directory
+# Stage 1: Build
+FROM node:20-alpine AS build
 WORKDIR /app
-
-# Install dependencies first for layer caching
 COPY package*.json ./
 RUN npm ci
-
-# Copy the rest of the application
 COPY . .
-
-# Build the TypeScript project
 RUN npm run build
 
-# Expose the API and Socket.io port
-EXPOSE 3001
+# Stage 2: Production
+FROM node:20-alpine
+WORKDIR /app
+# Only install production dependencies! This removes typescript and esbuild (which had the vulnerabilities)
+COPY package*.json ./
+RUN npm ci --omit=dev
+# Copy compiled JS from build stage
+COPY --from=build /app/dist ./dist
+# Copy config or other necessary files if any exist (but dist and node_modules are enough)
 
-# Start the server
+EXPOSE 3001
 CMD ["npm", "start"]
