@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anydesk-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: anydesk-redis
+  template:
+    metadata:
+      labels:
+        app: anydesk-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379

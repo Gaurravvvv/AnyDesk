@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anydesk-viewer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: anydesk-viewer
+  template:
+    metadata:
+      labels:
+        app: anydesk-viewer
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: viewer
+        image: ghcr.io/gaurravvvv/anydesk-viewer:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi

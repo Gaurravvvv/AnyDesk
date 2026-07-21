@@ -2,10 +2,12 @@ import express, { Request, Response } from 'express';
 import http from 'http';
 import cors from 'cors';
 import { Server } from 'socket.io';
+import promClient from 'prom-client';
 import { config } from './config';
 
 import { initializeSocketHandlers } from './socket';
-import { disconnectRedis } from './services/redisClient';
+import { getRedisClient, disconnectRedis } from './services/redisClient';
+import { createAdapter } from '@socket.io/redis-adapter';
 
 async function main(): Promise<void> {
   // ── Express ──────────────────────────────────────────
@@ -22,6 +24,13 @@ async function main(): Promise<void> {
     });
   });
 
+  // Prometheus Metrics
+  promClient.collectDefaultMetrics();
+  app.get('/metrics', async (_req: Request, res: Response) => {
+    res.set('Content-Type', promClient.register.contentType);
+    res.send(await promClient.register.metrics());
+  });
+
   // ── HTTP + Socket.io ─────────────────────────────────
   const server = http.createServer(app);
   const io = new Server(server, {
@@ -34,7 +43,11 @@ async function main(): Promise<void> {
     pingTimeout: 20000,
   });
 
-
+  // ── Redis Adapter for Horizontal Scaling ─────────────
+  const pubClient = await getRedisClient();
+  const subClient = pubClient.duplicate();
+  await subClient.connect();
+  io.adapter(createAdapter(pubClient, subClient));
 
   // ── Socket handlers ──────────────────────────────────
   initializeSocketHandlers(io);
