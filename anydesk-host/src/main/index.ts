@@ -53,6 +53,22 @@ function createHiddenWindow() {
 
   hiddenWindow.loadFile(path.join(__dirname, '../renderer/hidden.html'));
   
+  // CRITICAL: Prevent Backspace / Alt+Left from triggering browser-back navigation.
+  // When the host window is focused, nut-js keystrokes go to it. Backspace would
+  // navigate the page away, destroying the WebRTC connection and freezing the controller.
+  hiddenWindow.webContents.on('will-navigate', (event) => {
+    event.preventDefault();
+    console.log('[Host Main] Blocked navigation attempt — WebRTC connection preserved');
+  });
+
+  // Prevent the host window from being minimized by remote input clicks.
+  // When minimized, some Electron versions throttle or stop the renderer,
+  // breaking the screen capture pipeline.
+  hiddenWindow.on('minimize', (event: Electron.Event) => {
+    event.preventDefault();
+    hiddenWindow?.restore();
+  });
+  
   hiddenWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     console.log(`[Renderer]: ${message}`);
   });
@@ -131,10 +147,13 @@ ipcMain.handle('show-connection-prompt', async (event, viewerId) => {
 
 // IPC for input events
 ipcMain.on('control-event', (event, payload) => {
-  if (payload.type !== 'mousemove') {
+  if (payload.type !== 'mousemove' && payload.type !== 'mousedelta') {
     console.log(`[Host IPC] Received control-event: ${payload.type}`);
   }
-  inputService.handleEvent(payload);
+  // handleEvent is async — catch errors to prevent unhandled rejections from crashing main
+  inputService.handleEvent(payload).catch((err) => {
+    console.error('[Host IPC] Error handling input event:', err);
+  });
 });
 
 ipcMain.on('release-all-inputs', () => {
